@@ -1,0 +1,5 @@
+/vendor/
+#/composer.lock # kept to speed-up installation and ensure proper dependencies
+.php_cs.cache
+.phpunit.result.cache
+.php-cs-fixer.cache
