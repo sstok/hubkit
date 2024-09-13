@@ -121,71 +121,6 @@ final class ConfigTest extends TestCase
     }
 
     /** @test */
-    public function it_gets_for_repository(): void
-    {
-        $config = new Config([
-            'schema_version' => 2,
-            'github' => [
-                'github.com' => [
-                    'username' => 'sstok',
-                    'api_token' => 'CHANGE-ME',
-                ],
-            ],
-
-            'repositories' => [
-                'github.com' => [
-                    'repos' => [
-                        'hubkit-sandbox/empire' => $repoConfig = [
-                            'branches' => [
-                                '1.0' => [
-                                    'sync-tags' => true,
-                                    'split' => [
-                                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module.git'],
-                                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
-                                        'docs' => ['url' => 'git@github.com:hubkit-sandbox/docs.git'],
-                                        'noop' => ['url' => 'git@github.com:hubkit-sandbox/noop.git'],
-                                    ],
-                                ],
-                            ],
-                        ],
-                        'hubkit-sandbox/website' => $repoConfig2 = [
-                            'branches' => [
-                                '1.0' => [
-                                    'sync-tags' => false,
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
-            '_local' => $localConfig = [
-                'branches' => [
-                    '1.1' => [
-                        'sync-tags' => true,
-                        'split' => [
-                            'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module.git'],
-                            'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
-                            'docs' => ['url' => 'git@github.com:hubkit-sandbox/docs.git'],
-                            'noop' => ['url' => 'git@github.com:hubkit-sandbox/noop.git'],
-                        ],
-                    ],
-                ],
-            ],
-        ]);
-
-        self::assertSame($repoConfig, $config->getForRepository('github.com', 'hubkit-sandbox/empire'));
-        self::assertSame($repoConfig2, $config->getForRepository('github.com', 'hubkit-sandbox/website'));
-        self::assertSame(['branches' => []], $config->getForRepository('github.com', 'hubkit-sandbox/application'));
-
-        $config->setActiveRepository('github.com', 'hubkit-sandbox/empire');
-
-        self::assertSame($localConfig, $config->getForRepository('github.com', 'hubkit-sandbox/empire'));
-        self::assertSame($repoConfig2, $config->getForRepository('github.com', 'hubkit-sandbox/website'));
-        self::assertSame(['branches' => []], $config->getForRepository('github.com', 'hubkit-sandbox/application'));
-    }
-
-    /** @test */
     public function it_gets_for_branch_config(): void
     {
         $config = new Config([
@@ -197,161 +132,106 @@ final class ConfigTest extends TestCase
                 ],
             ],
 
-            'repositories' => [
-                'github.com' => [
-                    'repos' => [
-                        'hubkit-sandbox/empire' => [
-                            'branches' => [
-                                '1.0' => [
-                                    'sync-tags' => true,
-                                    'split' => [
-                                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module.git'],
-                                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
-                                        'docs' => ['url' => 'git@github.com:hubkit-sandbox/docs.git'],
-                                        'noop' => ['url' => 'git@github.com:hubkit-sandbox/noop.git'],
-                                    ],
-                                ],
-                            ],
-                        ],
-                        'hubkit-sandbox/application' => [
-                            'branches' => [
-                                ':default' => [
-                                    'sync-tags' => true,
-                                    'split' => [
-                                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module.git'],
-                                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
-                                    ],
-                                ],
-                                '1.0' => [
-                                    'sync-tags' => false,
-                                    'split' => [
-                                        'docs' => ['url' => 'git@github.com:hubkit-sandbox/docs.git'],
-                                        'noop' => ['url' => 'git@github.com:hubkit-sandbox/noop.git'],
-                                    ],
-                                ],
-                                '11.0' => [
-                                    'sync-tags' => false,
-                                    'ignore-default' => true,
-                                    'split' => [],
-                                ],
-                                '1.*' => [
-                                    'sync-tags' => false,
-                                    'split' => [
-                                        'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo.git', 'sync-tags' => true],
-                                    ],
-                                ],
-                                '/1\.*/' => [ // This should be ignored as the first pattern matches.
-                                    'sync-tags' => false,
-                                    'split' => [
-                                        'foo2' => ['url' => 'git@github.com:hubkit-sandbox/foo2.git'],
-                                    ],
-                                ],
-                                '2.x' => [
-                                    'sync-tags' => false,
-                                    'split' => [
-                                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module3.git'],
-                                        'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo.git'],
-                                    ],
-                                ],
-                                '#3.x' => [
-                                    'sync-tags' => false,
-                                    'split' => [
-                                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module4.git'],
-                                        'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo3.git'],
-                                    ],
-                                ],
-                                '/[3-9]\.\d+/' => [
-                                    'sync-tags' => false,
-                                    'split' => [
-                                        'foo3' => ['url' => 'git@github.com:hubkit-sandbox/foo3.git'],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-
             '_local' => [
                 'branches' => [
-                    ':default' => [
-                        'sync-tags' => true,
-                        'split' => [
-                            'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module2.git'],
-                            'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module2.git'],
-                        ],
-                    ],
-                    '1.*' => [
-                        'sync-tags' => false,
-                        'split' => [
-                            'foo4' => ['url' => 'git@github.com:hubkit-sandbox/foo4.git'],
-                        ],
-                    ],
-                    '1.1' => [
+                    ':default' => $default = [
                         'sync-tags' => true,
                         'split' => [
                             'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module.git'],
                             'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
+                        ],
+                    ],
+                    '1.0' => [
+                        'sync-tags' => false,
+                        'split' => [
                             'docs' => ['url' => 'git@github.com:hubkit-sandbox/docs.git'],
                             'noop' => ['url' => 'git@github.com:hubkit-sandbox/noop.git'],
+                        ],
+                    ],
+                    '11.0' => [
+                        'sync-tags' => false,
+                        'ignore-default' => true,
+                        'split' => [],
+                    ],
+                    '1.*' => [
+                        'sync-tags' => false,
+                        'split' => [
+                            'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo.git', 'sync-tags' => true],
+                        ],
+                    ],
+                    '/1\.*/' => [ // This should be ignored as the first pattern matches.
+                        'sync-tags' => false,
+                        'split' => [
+                            'foo2' => ['url' => 'git@github.com:hubkit-sandbox/foo2.git'],
+                        ],
+                    ],
+                    '2.x' => [
+                        'sync-tags' => false,
+                        'split' => [
+                            'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module3.git'],
+                            'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo.git'],
+                        ],
+                    ],
+                    '#3.x' => [
+                        'sync-tags' => false,
+                        'split' => [
+                            'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module4.git'],
+                            'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo3.git'],
+                        ],
+                    ],
+                    '/[3-9]\.\d+/' => [
+                        'sync-tags' => false,
+                        'split' => [
+                            'foo3' => ['url' => 'git@github.com:hubkit-sandbox/foo3.git'],
                         ],
                     ],
                     'main' => [
                         'sync-tags' => true,
                         'split' => [
                             'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core4-module.git'],
-                            'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting4-module.git'],
-                        ],
-                    ],
-                    '#master' => [
-                        'sync-tags' => true,
-                        'split' => [
-                            'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core5-module.git'],
-                            'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting5-module.git'],
+                            'src/Module/WebhostingModule' => ['url' => null],
                         ],
                     ],
                 ],
             ],
         ]);
 
+        // None found, falling back to default.
         self::assertEquals(
-            new BranchConfig(
-                '1.0',
-                [
-                    'sync-tags' => true,
-                    'split' => [
-                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module.git'],
-                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
-                        'docs' => ['url' => 'git@github.com:hubkit-sandbox/docs.git'],
-                        'noop' => ['url' => 'git@github.com:hubkit-sandbox/noop.git'],
-                    ],
-                ],
-                configName: '1.0',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/empire', 'branches', '1.0'],
-            ),
-            $config->getBranchConfig('1.0', 'github.com', 'hubkit-sandbox/empire')
+            new BranchConfig('12.0', $default, configName: ':default', configPath: ['_local', 'branches', ':default']),
+            $config->getBranchConfig('12.0'),
         );
 
+        // None found, literal name.
         self::assertEquals(
             new BranchConfig(
-                '2.0',
-                [],
-                configName: '2.0',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/empire', 'branches', '2.0'],
+                '#4.x',
+                $default,
+                configName: ':default',
+                configPath: ['_local', 'branches', ':default'],
             ),
-            $config->getBranchConfig('2.0', 'github.com', 'hubkit-sandbox/empire')
+            $config->getBranchConfig('#4.x')
         );
 
+        // Found, literal name. Merged with ':default'
         self::assertEquals(
             new BranchConfig(
                 '#3.x',
-                [],
+                [
+                    'sync-tags' => false,
+                    'split' => [
+                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module4.git'],
+                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module.git'],
+                        'foo' => ['url' => 'git@github.com:hubkit-sandbox/foo3.git'],
+                    ],
+                ],
                 configName: '#3.x',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/empire', 'branches', '#3.x'],
+                configPath: ['_local', 'branches', '#3.x'],
             ),
-            $config->getBranchConfig('#3.x', 'github.com', 'hubkit-sandbox/empire')
+            $config->getBranchConfig('#3.x')
         );
 
+        // Found by exact match.
         self::assertEquals(
             new BranchConfig(
                 '1.0',
@@ -365,11 +245,12 @@ final class ConfigTest extends TestCase
                     ],
                 ],
                 configName: '1.0',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', '1.0'],
+                configPath: ['_local', 'branches', '1.0'],
             ),
-            $config->getBranchConfig('1.0', 'github.com', 'hubkit-sandbox/application')
+            $config->getBranchConfig('1.0')
         );
 
+        // Found by pattern.
         self::assertEquals(
             new BranchConfig(
                 '1.1',
@@ -382,11 +263,12 @@ final class ConfigTest extends TestCase
                     ],
                 ],
                 configName: '1.*',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', '1.*'],
+                configPath: ['_local', 'branches', '1.*'],
             ),
-            $config->getBranchConfig('1.1', 'github.com', 'hubkit-sandbox/application')
+            $config->getBranchConfig('1.1')
         );
 
+        // Found by pattern.
         self::assertEquals(
             new BranchConfig(
                 '2.1',
@@ -399,11 +281,12 @@ final class ConfigTest extends TestCase
                     ],
                 ],
                 configName: '2.x',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', '2.x'],
+                configPath: ['_local', 'branches', '2.x'],
             ),
-            $config->getBranchConfig('2.1', 'github.com', 'hubkit-sandbox/application')
+            $config->getBranchConfig('2.1')
         );
 
+        // Found by regexp.
         self::assertEquals(
             new BranchConfig(
                 '4.5',
@@ -416,28 +299,9 @@ final class ConfigTest extends TestCase
                     ],
                 ],
                 configName: '/[3-9]\.\d+/',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', '/[3-9]\.\d+/'],
+                configPath: ['_local', 'branches', '/[3-9]\.\d+/'],
             ),
-            $config->getBranchConfig('4.5', 'github.com', 'hubkit-sandbox/application')
-        );
-
-        $config->setActiveRepository('github.com', 'hubkit-sandbox/empire');
-
-        self::assertEquals(
-            new BranchConfig(
-                '1.0',
-                [
-                    'sync-tags' => false,
-                    'split' => [
-                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core-module2.git'],
-                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting-module2.git'],
-                        'foo4' => ['url' => 'git@github.com:hubkit-sandbox/foo4.git'],
-                    ],
-                ],
-                configName: '1.*',
-                configPath: ['_local', 'branches', '1.*'],
-            ),
-            $config->getBranchConfig('1.0', 'github.com', 'hubkit-sandbox/empire')
+            $config->getBranchConfig('4.5')
         );
 
         self::assertEquals(
@@ -453,9 +317,9 @@ final class ConfigTest extends TestCase
                     ],
                 ],
                 configName: '1.0',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', '1.0'],
+                configPath: ['_local', 'branches', '1.0'],
             ),
-            $config->getBranchConfig('1.0', 'github.com', 'hubkit-sandbox/application')
+            $config->getBranchConfig('1.0')
         );
 
         // No explicit branch found, resolved from :default
@@ -470,9 +334,9 @@ final class ConfigTest extends TestCase
                     ],
                 ],
                 configName: ':default',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', ':default'],
+                configPath: ['_local', 'branches', ':default'],
             ),
-            $config->getBranchConfig('10.5', 'github.com', 'hubkit-sandbox/application')
+            $config->getBranchConfig('10.5')
         );
 
         // No explicit branch found, default ignored
@@ -485,41 +349,9 @@ final class ConfigTest extends TestCase
                     'split' => [],
                 ],
                 configName: '11.0',
-                configPath: ['repositories', 'github.com', 'repos', 'hubkit-sandbox/application', 'branches', '11.0'],
+                configPath: ['_local', 'branches', '11.0'],
             ),
-            $config->getBranchConfig('11.0', 'github.com', 'hubkit-sandbox/application')
-        );
-
-        self::assertEquals(
-            new BranchConfig(
-                'main',
-                [
-                    'sync-tags' => true,
-                    'split' => [
-                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core4-module.git'],
-                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting4-module.git'],
-                    ],
-                ],
-                configName: 'main',
-                configPath: ['_local', 'branches', 'main'],
-            ),
-            $config->getBranchConfig('main', 'github.com', 'hubkit-sandbox/empire')
-        );
-
-        self::assertEquals(
-            new BranchConfig(
-                '#master',
-                [
-                    'sync-tags' => true,
-                    'split' => [
-                        'src/Module/CoreModule' => ['url' => 'git@github.com:hubkit-sandbox/core5-module.git'],
-                        'src/Module/WebhostingModule' => ['url' => 'git@github.com:hubkit-sandbox/webhosting5-module.git'],
-                    ],
-                ],
-                configName: '#master',
-                configPath: ['_local', 'branches', '#master'],
-            ),
-            $config->getBranchConfig('master', 'github.com', 'hubkit-sandbox/empire')
+            $config->getBranchConfig('11.0')
         );
     }
 

@@ -86,31 +86,12 @@ final class InitConfigHandler extends ConfigBaseHandler
             throw new \RuntimeException('The config.php file already exists, cannot safely continue, either (temporarily) move or rename this file.');
         }
 
-        // Do this prior to .gitignore as the file likely already exist.
-        $this->mirrorHubKitDirectory($activeBranch);
-
         try {
             $this->process->mustRun(Process::fromShellCommandline('git show ' . $activeBranch . ':./.gitignore > .gitignore'));
             $this->process->mustRun(['git', 'add', '.gitignore']);
         } catch (\Exception $e) {
             $this->style->warning('Unable to automatically add .gitignore. Error: ' . $e->getMessage());
         }
-    }
-
-    private function mirrorHubKitDirectory(string $activeBranch): void
-    {
-        $tempDirectory = $this->tempRepository->getLocal($this->filesystem->getCwd(), $activeBranch);
-
-        if (! $this->filesystem->exists($tempDirectory . '/.hubkit')) {
-            return;
-        }
-
-        $this->filesystem->getFilesystem()->mirror($tempDirectory . '/.hubkit', $this->filesystem->getCwd(), options: ['copy_on_windows' => true]);
-
-        $this->style->info([
-            'The .hubkit directory was found and it\'s files copied to the "_hubkit" configuration branch.',
-            'Make sure to `git add` these files manually.',
-        ]);
     }
 
     private function createConfigFile(): void
@@ -121,7 +102,7 @@ final class InitConfigHandler extends ConfigBaseHandler
         );
         $config['host'] = $host;
         $config['repository'] = $repository;
-        $config['schema_version'] = 2;
+        $config['schema_version'] = 3;
 
         $configStr = VarExporter::export($config);
         $this->filesystem->dumpFile(

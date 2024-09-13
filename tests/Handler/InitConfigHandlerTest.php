@@ -16,7 +16,6 @@ namespace HubKit\Tests\Handler;
 use HubKit\Cli\Handler\InitConfigHandler;
 use HubKit\Service\Git;
 use Prophecy\Argument;
-use Symfony\Component\Filesystem\Filesystem as SfFilesystem;
 use Symfony\Component\Process\Process;
 
 /**
@@ -112,119 +111,28 @@ final class InitConfigHandlerTest extends ConfigHandlerTestCase
         $this->assertOutputNotMatches('The .hubkit directory was found and it\'s files copied to the "_hubkit" configuration branch.');
 
         self::assertConfigFileEquals([
-            'schema_version' => 2,
-            'host' => 'github.com',
-            'repository' => 'park-manager/hubkit',
-            'branches' => [],
-        ], $dumpedFile);
-    }
-
-    /** @test */
-    public function it_it_generates_config_branch_with_repository_config_from_global(): void
-    {
-        $this->github->getRepository()->willReturn('park-manager');
-
-        $this->git->branchExists('_hubkit')->willReturn(false);
-        $this->git->remoteBranchExists(REMOTE_MAIN, '_hubkit')->willReturn(false);
-
-        $this->process->mustRun(['git', 'checkout', '--orphan', '_hubkit'])->shouldBeCalled();
-        $this->process->mustRun(['git', 'rm', '-rf', '.'])->shouldBeCalled();
-        $this->filesystem->exists('./config.php')->willReturn(false);
-        $this->filesystem->getCwd()->willReturn($cwd = ':/home/Jessie/project-name');
-
-        $this->process->mustRun(Process::fromShellCommandline('git show master:./.gitignore > .gitignore'))->shouldBeCalled();
-        $this->process->mustRun(['git', 'add', '.gitignore'])->shouldBeCalled();
-
-        $this->tempRepository->getLocal($cwd, 'master')->willReturn($tempDirectory = ':/tmp/very-random-location-project');
-        $this->filesystem->exists($tempDirectory . '/.hubkit')->willReturn(false);
-
-        $dumpedFile = '';
-        $this->filesystem->dumpFile('./config.php', Argument::any())->will(
-            static function ($args) use (&$dumpedFile): void {
-                $dumpedFile = $args[1];
-            }
-        )->shouldBeCalled();
-
-        $this->process->mustRun(['git', 'add', 'config.php'])->shouldBeCalled();
-
-        $this->executeHandler();
-
-        $this->assertOutputMatches([
-            'Generating empty "_hubkit" branch.',
-            'The "_hubkit" configuration branch was created, edit the config.php file with your favorite editor.',
-            \sprintf('After you are done run `git checkout %s`.', 'master'),
-        ]);
-
-        $this->assertOutputNotMatches('The .hubkit directory was found and it\'s files copied to the "_hubkit" configuration branch.');
-
-        self::assertConfigFileEquals([
-            'schema_version' => 2,
-            'host' => 'github.com',
-            'repository' => 'park-manager/park-manager',
-            'sync-tags' => true,
+            'schema_version' => 3,
             'branches' => [
                 ':default' => [
-                    'split' => [
-                        'src/Component/Core' => [
-                            'url' => 'git@github.com:park-manager/core.git',
-                        ],
-                        'src/Component/Model' => [
-                            'url' => 'git@github.com:park-manager/model.git',
-                        ],
-                        'doc' => [
-                            'url' => 'git@github.com:park-manager/doc.git',
-                            'sync-tags' => false,
-                        ],
-                    ],
+                    'split' => [],
+                    'upmerge' => true,
+                    'sync-tags' => true,
+                    'maintained' => true,
+                    'ignore-default' => false,
                 ],
             ],
-        ], $dumpedFile);
-    }
-
-    /** @test */
-    public function it_it_generates_config_branch_with_repository_config_and_mirrors_files(): void
-    {
-        $this->git->branchExists('_hubkit')->willReturn(false);
-        $this->git->remoteBranchExists(REMOTE_MAIN, '_hubkit')->willReturn(false);
-
-        $this->process->mustRun(['git', 'checkout', '--orphan', '_hubkit'])->shouldBeCalled();
-        $this->process->mustRun(['git', 'rm', '-rf', '.'])->shouldBeCalled();
-        $this->filesystem->exists('./config.php')->willReturn(false);
-        $this->filesystem->getCwd()->willReturn($cwd = ':/home/Jessie/project-name');
-
-        $this->process->mustRun(Process::fromShellCommandline('git show master:./.gitignore > .gitignore'))->shouldBeCalled();
-        $this->process->mustRun(['git', 'add', '.gitignore'])->shouldBeCalled();
-
-        $this->tempRepository->getLocal($cwd, 'master')->willReturn($tempDirectory = ':/tmp/very-random-location-project');
-        $this->filesystem->exists($tempDirectory . '/.hubkit')->willReturn(true);
-
-        $filesystem = $this->prophesize(SfFilesystem::class);
-        $filesystem->mirror($tempDirectory . '/.hubkit', $cwd, null, ['copy_on_windows' => true])->shouldBeCalled();
-        $this->filesystem->getFilesystem()->willReturn($filesystem->reveal());
-
-        $dumpedFile = '';
-        $this->filesystem->dumpFile('./config.php', Argument::any())->will(
-            static function ($args) use (&$dumpedFile): void {
-                $dumpedFile = $args[1];
-            }
-        )->shouldBeCalled();
-
-        $this->process->mustRun(['git', 'add', 'config.php'])->shouldBeCalled();
-
-        $this->executeHandler();
-
-        $this->assertOutputMatches([
-            'Generating empty "_hubkit" branch.',
-            'The .hubkit directory was found and it\'s files copied to the "_hubkit" configuration branch.',
-            'The "_hubkit" configuration branch was created, edit the config.php file with your favorite editor.',
-            \sprintf('After you are done run `git checkout %s`.', 'master'),
-        ]);
-
-        self::assertConfigFileEquals([
-            'schema_version' => 2,
+            'branches_alias' => [],
+            'adapter' => 'github',
             'host' => 'github.com',
             'repository' => 'park-manager/hubkit',
-            'branches' => [],
+            'main_branch' => 'main',
+            'pull_request' => [
+                'split' => 'all',
+            ],
+            'release' => [
+                'split' => 'all',
+                'signed' => true,
+            ],
         ], $dumpedFile);
     }
 

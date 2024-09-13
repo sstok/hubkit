@@ -20,6 +20,7 @@ final class Config
 
     public function __construct(private readonly array $config) {}
 
+    /** @deprecated TO BE REMOVED. Use a context object instead. */
     public function setActiveRepository(?string $host, ?string $repository): void
     {
         $this->activeHost = $host;
@@ -117,46 +118,22 @@ final class Config
         return true;
     }
 
-    /** @return array<string, mixed> */
-    public function getForRepository(?string $host = null, ?string $repository = null, ?bool &$isLocal = false): array
+    /**
+     * @deprecated TO BE REMOVED
+     *
+     * @return array<string, mixed>
+     */
+    public function getForRepository(?string $host = null, ?string $repository = null, ?bool &$isLocal = true): array
     {
-        $host ??= $this->activeHost;
-        $repository ??= $this->activeRepository;
+        $isLocal = true;
 
-        if ($host === null) {
-            throw new \InvalidArgumentException('Argument $host cannot be empty, and could not be resolved from default.');
-        }
-
-        if ($repository === null) {
-            throw new \InvalidArgumentException('Argument $repository cannot be empty, and could not be resolved from default');
-        }
-
-        $globalConfig = $this->get(['repositories', $host, 'repos', $repository], ['branches' => []]);
-
-        if ($this->activeHost === $host && $this->activeRepository === $repository) {
-            $isLocal = true;
-
-            return $this->get(['_local'], $globalConfig);
-        }
-
-        return $globalConfig;
+        return $this->get(['_local']);
     }
 
     public function getBranchConfig(string $branchName, ?string $host = null, ?string $repository = null): BranchConfig
     {
-        $host ??= $this->activeHost;
-        $repository ??= $this->activeRepository;
-
-        if ($host === null) {
-            throw new \InvalidArgumentException('Argument $host cannot be empty, and could not be resolved from default.');
-        }
-
-        if ($repository === null) {
-            throw new \InvalidArgumentException('Argument $repository cannot be empty, and could not be resolved from default');
-        }
-
-        $repoConfig = $this->getForRepository($host, $repository, $isLocal);
-        $configPath = $isLocal ? ['_local', 'branches'] : ['repositories', $host, 'repos', $repository, 'branches'];
+        $repoConfig = $this->get(['_local'], []);
+        $configPath = ['_local', 'branches'];
 
         /**
          * @var array<string, array<string, mixed>> $branches
@@ -218,7 +195,7 @@ final class Config
 
     public function getMainBranch(): string
     {
-        return $this->getFirstNotNull([['_local', 'main_branch'], ['_main_branch']], 'main');
+        return $this->get(['_local', 'main_branch']);
     }
 
     /** @return array{split: string} */

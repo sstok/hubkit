@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace HubKit\Tests\Handler;
 
 use HubKit\Config;
+use HubKit\ConfigFactory;
 use HubKit\Service\CliProcess;
 use HubKit\Service\Filesystem;
 use HubKit\Service\Git;
@@ -49,7 +50,6 @@ abstract class ConfigHandlerTestCase extends TestCase
         $this->git = $this->prophesize(Git::class);
         $this->git->guardWorkingTreeReady()->will(static function (): void {});
         $this->git->getActiveBranchName()->willReturn('master');
-        $this->git->getPrimaryBranch()->willReturn('master');
 
         $this->github = $this->prophesize(GitHub::class);
         $this->github->getHostname()->willReturn('github.com');
@@ -62,30 +62,21 @@ abstract class ConfigHandlerTestCase extends TestCase
         $this->tempRepository = $this->prophesize(GitTempRepository::class);
         $this->filesystem = $this->prophesize(Filesystem::class);
 
-        $this->config = new Config([
-            'repositories' => [
-                'github.com' => [
-                    'repos' => [
-                        'park-manager/park-manager' => [
-                            'sync-tags' => true,
-                            'branches' => [
-                                ':default' => [
-                                    'split' => [
-                                        'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git'],
-                                        'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git'],
-                                        'doc' => [
-                                            'url' => 'git@github.com:park-manager/doc.git',
-                                            'sync-tags' => false,
-                                        ],
-                                    ],
-                                ],
-                            ],
+        $this->config = ConfigFactory::create(/*localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                ':default' => [
+                    'split' => [
+                        'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git'],
+                        'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git'],
+                        'doc' => [
+                            'url' => 'git@github.com:park-manager/doc.git',
+                            'sync-tags' => false,
                         ],
                     ],
                 ],
             ],
-        ]);
-
+        ]*/);
         $this->config->setActiveRepository('github.com', 'park-manager/park-manager');
 
         $this->io = new BufferedIO();

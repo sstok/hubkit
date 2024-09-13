@@ -15,6 +15,7 @@ namespace HubKit\Tests\Handler;
 
 use HubKit\Cli\Handler\SwitchBaseHandler;
 use HubKit\Config;
+use HubKit\ConfigFactory;
 use HubKit\Service\CliProcess;
 use HubKit\Service\Filesystem;
 use HubKit\Service\Git;
@@ -68,7 +69,7 @@ final class SwitchBaseHandlerTest extends TestCase
         $this->filesystem = $this->prophesize(Filesystem::class);
         $this->filesystem->getFilesystem()->willReturn($this->sfFilesystem);
 
-        $this->config = new Config([]);
+        $this->config = ConfigFactory::create();
         $this->config->setActiveRepository('github.com', 'park-manager/hubkit');
 
         TrackedPromise::$calls = [];

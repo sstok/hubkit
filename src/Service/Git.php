@@ -109,34 +109,6 @@ class Git
     }
 
     /**
-     * @deprecated use {@see Config::getMainBranch()} instead
-     *
-     * @return string either main, master or a custom configured branch-name
-     */
-    public function getPrimaryBranch(): string
-    {
-        static $branch = null;
-
-        $branch ??= $this->getGitConfig('init.defaultbranch');
-
-        if ($branch !== '') {
-            return $branch;
-        }
-
-        if ($this->branchExists('main')) {
-            $branch = 'main';
-        } elseif ($this->branchExists('master')) {
-            $branch = 'master';
-        } else {
-            throw new \RuntimeException(
-                'Unable to determine primary-branch , expected either "master" or "main". But neither one was found, set the "init.defaultbranch" Git local config to resolve this.'
-            );
-        }
-
-        return $branch;
-    }
-
-    /**
      * @return ($allowFailure is true ? string|null : string)
      *
      * @throws \RuntimeException

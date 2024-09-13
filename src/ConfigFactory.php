@@ -13,98 +13,55 @@ declare(strict_types=1);
 
 namespace HubKit;
 
-use HubKit\Service\Git;
-use HubKit\Service\Git\GitFileReader;
 use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\Exception\Exception as ConfigException;
 use Symfony\Component\Config\Definition\Processor;
-use Symfony\Component\Console\Style\StyleInterface;
 
 final class ConfigFactory
 {
-    private string $currentDir;
-    private string $configFile;
-    private ?string $localConfigFile = null;
-    private bool $detectedGlobalRepositories = false;
+    public static function createFromFiles(string $currentDir, string $configFile, ?string $localConfigFile = null): Config
+    {
+        $currentDir = self::normalizePath($currentDir);
+        $configFile = self::normalizePath($configFile);
 
-    public function __construct(
-        string $currentDir,
-        string $configFile,
-        private readonly StyleInterface $style,
-        private readonly GitFileReader $gitFileReader,
-        private readonly Git $git,
-    ) {
-        $this->currentDir = self::normalizePath($currentDir);
-        $this->configFile = self::normalizePath($configFile);
+        $config = self::resolveConfigMainConfig(require $configFile);
 
-        if (getenv('HUBKIT_NO_LOCAL') !== 'true' && $this->gitFileReader->fileExists('_hubkit', 'config.php')) {
-            $this->localConfigFile = $this->gitFileReader->getFile('_hubkit', 'config.php');
+        if ($localConfigFile) {
+            $localConfigFile = self::normalizePath($localConfigFile);
+
+            try {
+                $localConfig = require $localConfigFile;
+            } catch (\ParseError $e) {
+                throw new \RuntimeException('Unable to load configuration file, run with env `HUBKIT_NO_LOCAL=true` to bypass local config loading. Error: ' . $e->getMessage(), 1, $e);
+            }
+
+            $config['_local'] = self::resolveLocalConfig($localConfig);
+        } else {
+            $config['_local'] = self::resolveLocalConfig(['schema_version' => 3]);
         }
 
-        if (getenv('HUBKIT_NO_LOCAL') === 'true') {
-            $this->style->warning('Env HUBKIT_NO_LOCAL=true was set, local configuration was not loaded.');
-        }
+        $config['current_dir'] = $currentDir;
+
+        return new Config($config);
     }
 
-    private static function normalizePath(?string $path = null)
+    private static function normalizePath(?string $path = null): string
     {
-        if ($path === null) {
-            return;
-        }
-
         $realPath = realpath($path);
 
         if ($realPath === false) {
-            throw new \InvalidArgumentException(
-                \sprintf('Unable to normalize path "%s", no such file or directory.', $path)
-            );
+            throw new \InvalidArgumentException(\sprintf('Unable to normalize path "%s", no such file or directory.', $path));
         }
 
         return str_replace('\\', '//', $realPath);
     }
 
-    public function create(): Config
+    public static function create(?array $mainConfig = null, ?array $localConfig = null, ?string $currentDir = null): Config
     {
-        $config = require $this->configFile;
-
-        if (empty($config['schema_version'])) {
-            throw new \RuntimeException('Config "schema_version" is missing in configuration.');
-        }
-
-        $config = $this->resolveConfigMainConfig($config);
-
-        if ($config['schema_version'] < 2) {
-            $this->style->note('Hubkit "schema_version" 1 in configuration is deprecated and will no longer work in v2.0.');
-        } elseif ($this->localConfigFile) {
-            try {
-                $localeConfig = require $this->localConfigFile;
-            } catch (\ParseError $e) {
-                throw new \RuntimeException('Unable to load configuration file, run with env `HUBKIT_NO_LOCAL=true` to bypass local config loading. Error: ' . $e->getMessage(), 1, $e);
-            }
-
-            $config['_local'] = $this->resolveLocalConfig($localeConfig);
-        }
-
-        if (! isset($config['_local']['main_branch'])) {
-            // No local configuration provided, but still the main-branch must be resolvable.
-            // So store it here, there is no expectation to explicitly get this for a repository.
-            //
-            // In the future the whole concept for using 'global' configuration for a repository
-            // is removed in favor of local-only configuration.
-            $config['_main_branch'] = $this->findMainBranch();
-        }
-
-        if ($this->detectedGlobalRepositories) {
-            $this->style->caution(
-                <<<MSG
-                    Setting repositories in global configuration is deprecated since HuPKit v1.4 and will be removed in v2.0.
-                    Use local repository configurations instead.
-                    MSG
-            );
-        }
-
-        $config['current_dir'] = $this->currentDir;
+        $config = self::resolveConfigMainConfig($mainConfig ?? ['schema_version' => 3]);
+        $config['_local'] = self::resolveLocalConfig($localConfig ?? ['schema_version' => 3]);
+        $config['current_dir'] = $currentDir ?? getcwd();
 
         return new Config($config);
     }
@@ -114,14 +71,14 @@ final class ConfigFactory
      *
      * @return array<string, mixed>
      */
-    private function resolveConfigMainConfig(array $config): array
+    public static function resolveConfigMainConfig(array $config): array
     {
         $treeBuilder = new TreeBuilder('hubkit');
         $treeBuilder->getRootNode()
             ->children()
                 ->integerNode('schema_version')
-                    ->min(1)
-                    ->max(2)
+                    ->min(3)
+                    ->max(3)
                 ->end()
                 ->arrayNode('github')
                     ->useAttributeAsKey('host')
@@ -133,57 +90,6 @@ final class ConfigFactory
                         ->end()
                     ->end()
                 ->end()
-                ->append($this->addRepositoriesNode())
-            ->end()
-            ->beforeNormalization()
-                ->ifTrue(static fn ($v): bool => isset($v['repos']))
-                ->then(function ($v): array {
-                    if ($v['schema_version'] > 1) {
-                        $this->style->warning('Legacy configuration key "repos" was detected with "schema_version" 2.');
-                    }
-
-                    if (isset($v['repositories'])) {
-                        $this->style->warning([
-                            'Configuration key "repos" and "repositories" are both defined, ignoring legacy "repos" configuration.',
-                            'Only use "repositories" with the correct structure as the "repos" key will not be supported in future versions.',
-                        ]);
-
-                        return $v;
-                    }
-
-                    $repositories = [];
-
-                    foreach ($v['repos'] as $host => $repos) {
-                        $repository = [];
-
-                        foreach ($repos as $name => $repo) {
-                            $repository[$name]['branches'][':default'] = [];
-
-                            if (isset($repo['sync-tags'])) {
-                                $repository[$name]['branches'][':default']['sync-tags'] = $repo['sync-tags'];
-                            }
-
-                            if (isset($repo['split'])) {
-                                $repository[$name]['branches'][':default']['split'] = $repo['split'];
-                            }
-                        }
-
-                        $repositories[$host]['repos'] = $repository;
-                    }
-
-                    $v['repositories'] = $repositories;
-                    unset($v['repos']);
-
-                    return $v;
-                })
-            ->end()
-            ->validate()
-                ->ifTrue(static fn ($v): bool => \count($v['repositories']) > 0)
-                ->then(function (array $v): array {
-                    $this->detectedGlobalRepositories = true;
-
-                    return $v;
-                })
             ->end()
         ;
 
@@ -194,40 +100,13 @@ final class ConfigFactory
         }
     }
 
-    private function addRepositoriesNode(): ArrayNodeDefinition
-    {
-        return (new TreeBuilder('repositories'))
-            ->getRootNode()
-            ->normalizeKeys(false)
-            ->useAttributeAsKey('host')
-            ->arrayPrototype()
-                ->normalizeKeys(false)
-                ->beforeNormalization()
-                    ->ifTrue(static fn ($v): bool => ! isset($v['repos']))
-                    ->then(static fn ($v): array => ['repos' => $v])
-                ->end()
-                ->children()
-                    ->arrayNode('repos')
-                        ->normalizeKeys(false)
-                        ->useAttributeAsKey('repo')
-                        ->arrayPrototype()
-                            ->children()
-                                ->append($this->addBranchesNode())
-                                ->append($this->addBranchesAliasNode())
-                            ->end()
-                        ->end()
-                    ->end()
-                ->end()
-            ->end()
-        ;
-    }
-
-    private function addBranchesNode(): ArrayNodeDefinition
+    private static function addBranchesNode(): ArrayNodeDefinition
     {
         return (new TreeBuilder('branches'))
             ->getRootNode()
             ->normalizeKeys(false)
             ->useAttributeAsKey('name')
+            ->defaultValue([':default' => ['maintained' => true, 'upmerge' => true, 'sync-tags' => true, 'ignore-default' => false, 'split' => []]])
             ->validate()
                 ->always()
                 ->then(static function ($v): array {
@@ -279,7 +158,11 @@ final class ConfigFactory
                         ->arrayPrototype()
                             ->normalizeKeys(false)
                             ->beforeNormalization()
-                                ->ifTrue(static fn ($v): bool => \is_string($v) || $v === false)
+                                ->ifString()
+                                ->then(static fn ($v): array => ['url' => $v])
+                            ->end()
+                            ->beforeNormalization()
+                                ->ifTrue(static fn ($v): bool => $v === false)
                                 ->then(static fn ($v): array => ['url' => $v])
                             ->end()
                             ->children()
@@ -303,7 +186,7 @@ final class ConfigFactory
                 ->end()
                 ->validate()
                     ->always()
-                    ->then(static function ($v): array {
+                    ->then(static function (array $v): array {
                         $found = [];
 
                         foreach ($v['split'] as $prefix => $config) {
@@ -341,7 +224,7 @@ final class ConfigFactory
         ;
     }
 
-    private function addBranchesAliasNode(): ArrayNodeDefinition
+    private static function addBranchesAliasNode(): ArrayNodeDefinition
     {
         return (new TreeBuilder('branches_alias'))
             ->getRootNode()
@@ -381,7 +264,7 @@ final class ConfigFactory
      *
      * @return array<string, mixed>
      */
-    public function resolveLocalConfig(array $config): array
+    public static function resolveLocalConfig(array $config): array
     {
         $treeBuilder = new TreeBuilder('hubkit');
         $treeBuilder->getRootNode()
@@ -389,10 +272,10 @@ final class ConfigFactory
                 ->integerNode('schema_version')
                     ->isRequired()
                     ->min(2)
-                    ->max(2)
+                    ->max(3)
                 ->end()
-                ->append($this->addBranchesNode())
-                ->append($this->addBranchesAliasNode())
+                ->append(self::addBranchesNode())
+                ->append(self::addBranchesAliasNode())
                 ->enumNode('adapter')
                     ->values(['github'])
                     ->defaultValue('github')
@@ -400,9 +283,9 @@ final class ConfigFactory
                 ->scalarNode('host')->defaultNull()->end()
                 ->scalarNode('repository')->defaultNull()->end()
                 ->scalarNode('main_branch')
-                    ->defaultNull()
+                    ->defaultValue('main')
                     ->validate()
-                        ->always(fn ($v) => $v === null ? $this->findMainBranch() : self::validateBranchName((string) $v))
+                        ->always(fn ($v) => self::validateBranchName((string) $v))
                     ->end()
                 ->end()
                 ->arrayNode('pull_request')
@@ -435,43 +318,6 @@ final class ConfigFactory
         } catch (ConfigException $e) {
             throw new \RuntimeException('Local configuration contains one or more errors. ' . $e->getMessage(), 1, $e);
         }
-    }
-
-    private function findMainBranch(): string
-    {
-        if (! $this->git->isGitDir()) {
-            return 'main';
-        }
-
-        if ($this->git->branchExists('main')) {
-            $branch = 'main';
-        } elseif ($this->git->branchExists('master')) {
-            $branch = 'master';
-        } else {
-            $versions = $this->git->getVersionBranches();
-            /** @var string|null $branch */
-            $branch = array_pop($versions);
-
-            if ($branch === null) {
-                try {
-                    $branch = $this->git->getActiveBranchName();
-                } catch (\Throwable $e) {
-                    $this->style->error([
-                        'Could not detect "main_branch", neither "main", "master" or any versioned branch exist, defaulting to "main".',
-                        $e->getMessage(),
-                    ]);
-
-                    return 'main';
-                }
-            }
-        }
-
-        $this->style->block([
-            'No "main_branch" was not set, this value will default to "main" in HuPKit v2.0.' . "\n" .
-            \sprintf('The "main_branch" is resolved as "%s", set the "main_branch" option in your local configuration to change this.', $branch),
-        ], null, 'fg=yellow', ' ! ');
-
-        return $branch;
     }
 
     private static function validateBranchName(string $v): string

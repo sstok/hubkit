@@ -15,6 +15,7 @@ namespace HubKit\Tests\Handler;
 
 use HubKit\Cli\Handler\ReleaseHandler;
 use HubKit\Config;
+use HubKit\ConfigFactory;
 use HubKit\Service\BranchSplitsh;
 use HubKit\Service\CliProcess;
 use HubKit\Service\Editor;
@@ -125,31 +126,21 @@ labels: removed-deprecation
         $this->process = $this->prophesize(CliProcess::class);
         $this->editor = $this->prophesize(Editor::class);
 
-        $this->config = new Config(
-            [
-                'repositories' => [
-                    'github.com' => [
-                        'repos' => [
-                            'park-manager/park-manager' => [
-                                'sync-tags' => true,
-                                'branches' => [
-                                    ':default' => [
-                                        'split' => [
-                                            'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git'],
-                                            'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git'],
-                                            'doc' => [
-                                                'url' => 'git@github.com:park-manager/doc.git',
-                                                'sync-tags' => false,
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
+        $this->config = ConfigFactory::create(localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                ':default' => [
+                    'split' => [
+                        'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git'],
+                        'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git'],
+                        'doc' => [
+                            'url' => 'git@github.com:park-manager/doc.git',
+                            'sync-tags' => false,
                         ],
                     ],
                 ],
-            ]
-        );
+            ],
+        ]);
         $this->config->setActiveRepository('github.com', 'park-manager/hubkit');
 
         $this->branchSplitsh = $this->prophesize(BranchSplitsh::class);
@@ -186,22 +177,19 @@ labels: removed-deprecation
     /** @test */
     public function it_creates_a_new_release_with_changed_only_split_without_existing_tags(): void
     {
-        $this->config = new Config(
-            [
-                '_local' => [
-                    'branches' => [
-                        ':default' => [
-                            'split' => [
-                                'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git', 'sync-tags' => true],
-                                'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git', 'sync-tags' => true],
-                                'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
-                            ],
-                        ],
+        $this->config = ConfigFactory::create(localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                ':default' => [
+                    'split' => [
+                        'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git', 'sync-tags' => true],
+                        'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git', 'sync-tags' => true],
+                        'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
                     ],
-                    'release' => ['split' => 'changed-only', 'signed' => true],
                 ],
             ],
-        );
+            'release' => ['split' => 'changed-only', 'signed' => true],
+        ]);
         $this->config->setActiveRepository('github.com', 'park-manager/park-manager');
 
         $this->expectTags([], 'master');
@@ -229,22 +217,19 @@ labels: removed-deprecation
     /** @test */
     public function it_creates_a_new_release_with_changed_only_split_with_existing_tags(): void
     {
-        $this->config = new Config(
-            [
-                '_local' => [
-                    'branches' => [
-                        ':default' => [
-                            'split' => [
-                                'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git', 'sync-tags' => true],
-                                'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git', 'sync-tags' => true],
-                                'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
-                            ],
-                        ],
+        $this->config = ConfigFactory::create(localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                ':default' => [
+                    'split' => [
+                        'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git', 'sync-tags' => true],
+                        'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git', 'sync-tags' => true],
+                        'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
                     ],
-                    'release' => ['split' => 'changed-only', 'signed' => true],
                 ],
             ],
-        );
+            'release' => ['split' => 'changed-only', 'signed' => true],
+        ]);
         $this->config->setActiveRepository('github.com', 'park-manager/park-manager');
 
         $this->expectTags(['1.2.0', '2.0.0'], 'master');
@@ -274,22 +259,19 @@ labels: removed-deprecation
     /** @test */
     public function it_creates_a_new_release_with_changed_only_split_forced_all(): void
     {
-        $this->config = new Config(
-            [
-                '_local' => [
-                    'branches' => [
-                        ':default' => [
-                            'split' => [
-                                'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git', 'sync-tags' => true],
-                                'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git', 'sync-tags' => true],
-                                'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
-                            ],
-                        ],
+        $this->config = ConfigFactory::create(localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                ':default' => [
+                    'split' => [
+                        'src/Component/Core' => ['url' => 'git@github.com:park-manager/core.git', 'sync-tags' => true],
+                        'src/Component/Model' => ['url' => 'git@github.com:park-manager/model.git', 'sync-tags' => true],
+                        'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
                     ],
-                    'release' => ['split' => 'changed-only', 'signed' => true],
                 ],
             ],
-        );
+            'release' => ['split' => 'changed-only', 'signed' => true],
+        ]);
         $this->config->setActiveRepository('github.com', 'park-manager/park-manager');
 
         $this->expectTags(['1.2.0', '2.0.0'], 'master');

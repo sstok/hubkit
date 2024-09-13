@@ -15,6 +15,7 @@ namespace HubKit\Tests\Handler;
 
 use HubKit\Cli\Handler\MergeHandler;
 use HubKit\Config;
+use HubKit\ConfigFactory;
 use HubKit\Helper\BranchAliasResolver;
 use HubKit\Helper\SingleLineChoiceQuestionHelper;
 use HubKit\Service\BranchSplitsh;
@@ -70,21 +71,10 @@ final class MergeHandlerTest extends TestCase
         $this->aliasResolver->getAlias('master')->willReturn('1.0-dev');
         $this->aliasResolver->getDetectedBy()->willReturn('composer.json "extra.branch-alias.dev-master"');
 
-        $this->config = new Config([
-            'repositories' => [
-                'github.com' => [
-                    'repos' => [
-                        'park-manager/hubkit' => [
-                            'sync-tags' => true,
-                            'branches' => [
-                                '2.0' => [
-                                    'maintained' => false,
-                                    'split' => [],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
+        $this->config = ConfigFactory::create(localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                '2.0' => false,
             ],
         ]);
         $this->config->setActiveRepository('github.com', 'park-manager/hubkit');
@@ -227,16 +217,14 @@ by who-else at 2014-11-23T14:50:24Z
     /** @test */
     public function it_merges_a_pull_request_and_skips_repository_split_when_local_branch_is_not_ready(): void
     {
-        $this->config = new Config([
-            'repos' => [
-                'github.com' => [
-                    'park-manager/hubkit' => [
-                        'sync-tags' => true,
-                        'split' => [
-                            'src/Component/Core' => 'git@github.com:park-manager/core.git',
-                            'src/Component/Model' => 'git@github.com:park-manager/model.git',
-                            'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
-                        ],
+        $this->config = ConfigFactory::create(localConfig: [
+            'schema_version' => 3,
+            'branches' => [
+                ':default' => [
+                    'split' => [
+                        'src/Component/Core' => 'git@github.com:park-manager/core.git',
+                        'src/Component/Model' => 'git@github.com:park-manager/model.git',
+                        'doc' => ['url' => 'git@github.com:park-manager/doc.git', 'sync-tags' => false],
                     ],
                 ],
             ],

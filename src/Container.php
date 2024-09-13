@@ -24,13 +24,19 @@ class Container extends \Pimple\Container implements ContainerInterface
     {
         parent::__construct($values);
 
-        $this['config'] = static fn (self $container) => (new ConfigFactory(
-            $container['current_dir'],
-            $container['config_file'],
-            $container['style'],
-            $container['git.file_reader'],
-            $container['git'],
-        ))->create();
+        $this['config'] = static function (self $container) {
+            $localConfigFile = null;
+
+            if (getenv('HUBKIT_NO_LOCAL') !== 'true' && $container['git.file_reader']->fileExists('_hubkit', 'config.php')) {
+                $localConfigFile = $container['git.file_reader']->getFile('_hubkit', 'config.php');
+            }
+
+            if (getenv('HUBKIT_NO_LOCAL') === 'true') {
+                $container['style']->warning('Env HUBKIT_NO_LOCAL=true was set, local configuration was not loaded.');
+            }
+
+            return ConfigFactory::createFromFiles($container['current_dir'], $container['config_file'], $localConfigFile);
+        };
 
         $this['guzzle'] = static function (self $container) {
             $options = [];
