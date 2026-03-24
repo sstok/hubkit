@@ -13,9 +13,12 @@ declare(strict_types=1);
 
 namespace HubKit\Tests\Functional;
 
+use HubKit\Service\Filesystem;
+use HubKit\Service\Git;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Output\StreamOutput;
+use Symfony\Component\Console\Style\OutputStyle;
 use Symfony\Component\Process\Process;
 
 trait GitTesterTrait
@@ -136,5 +139,17 @@ trait GitTesterTrait
         foreach ($branches as $branch) {
             $this->runCliCommand(['git', 'branch', $branch]);
         }
+    }
+
+    protected function createGit(string $workingDir = null, ?string $tempdir = null): Git
+    {
+        $tempdir ??= $this->getTempDir();
+        $workingDir ??= $tempdir;
+
+        return new Git(
+            $this->getProcessService($workingDir),
+            new Filesystem($tempdir, $tempdir . \DIRECTORY_SEPARATOR . '.test.hubkit_cache'),
+            $this->createMock(OutputStyle::class)
+        );
     }
 }

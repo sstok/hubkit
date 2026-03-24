@@ -48,7 +48,7 @@ class SplitCreatedHandler extends GitBaseHandler
         }
 
         foreach ($splits as $url) {
-            ['host' => $host, 'org' => $org, 'repo' => $repo] = Git::getGitUrlInfo($url);
+            ['host' => $host, 'org' => $org, 'repo' => $repo] = Git::getGitUrlInfo($url)->toArray();
 
             if (! isset($hosts[$host])) {
                 $hosts[$host] = $this->github->createForHost($host);
