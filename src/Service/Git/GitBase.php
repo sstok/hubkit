@@ -14,20 +14,21 @@ declare(strict_types=1);
 namespace HubKit\Service\Git;
 
 use HubKit\Service\CliProcess;
+use HubKit\Service\Filesystem;
 use HubKit\Service\Git;
+use Symfony\Component\Console\Style\StyleInterface;
 
-class GitBase extends Git
+abstract class GitBase
 {
-    private readonly string $cwd;
+    public function __construct(
+        protected Git $git,
+        protected CliProcess $process,
+        protected StyleInterface $style,
+        protected Filesystem $filesystem,
+    ) { }
 
-    public function __construct(CliProcess $process, ?string $cwd = null)
+    protected function guardWorkingTreeReady(): void
     {
-        $this->process = $process;
-        $this->cwd = $cwd ?? getcwd();
-    }
-
-    protected function getCwd(): string
-    {
-        return $this->cwd;
+        $this->git->guardWorkingTreeReady();
     }
 }

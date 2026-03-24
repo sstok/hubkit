@@ -13,10 +13,13 @@ declare(strict_types=1);
 
 namespace HubKit\Service;
 
-use Composer\Semver\Comparator;
 use HubKit\Exception\WorkingTreeIsNotReady;
+use HubKit\Model\CommitDto;
+use HubKit\Service\Git\GitBranch;
+use HubKit\Service\Git\GitCommit;
+use HubKit\Service\Git\GitConfig;
+use HubKit\Service\Git\GitRemote;
 use HubKit\StringUtil;
-use Rollerworks\Component\Version\Version;
 use Symfony\Component\Console\Style\StyleInterface;
 use Symfony\Component\Process\Process;
 
@@ -30,11 +33,20 @@ class Git
 
     private ?string $gitDir = null;
 
+    private GitBranch $branch;
+    private GitRemote $remote;
+    private GitCommit $commit;
+
     public function __construct(
-        protected CliProcess $process,
-        private readonly Filesystem $filesystem,
-        protected StyleInterface $style
-    ) {}
+        private CliProcess $process,
+        private Filesystem $filesystem,
+        private StyleInterface $style
+    ) {
+        $this->branch = new GitBranch($this, $process, $style, $filesystem);
+        $this->remote = new GitRemote($this, $process, $style, $filesystem);
+        $this->commit = new GitCommit($this, $process, $style, $filesystem);
+        $this->config = new GitConfig($this, $process, $style, $filesystem);
+    }
 
     public function isGitDir(): bool
     {
@@ -50,239 +62,89 @@ class Git
             return false;
         }
 
-        return str_replace('\\', '/', $this->getCwd()) === $directory;
+        return str_replace('\\', '/', $this->filesystem->getCwd()) === $directory;
+    }
+
+    public function branch(): GitBranch
+    {
+        return $this->branch;
+    }
+
+    public function remote(): GitRemote
+    {
+        return $this->remote;
+    }
+
+    public function commit(): GitCommit
+    {
+        return $this->commit;
+    }
+
+    public function config(): GitConfig
+    {
+        return $this->config;
     }
 
     /**
-     * Gets the diff status of the remote and local.
-     *
-     * @return self::STATUS_*
-     *
-     * @see https://gist.github.com/WebPlatformDocs/437f763b948c926ca7ba
-     * @see https://stackoverflow.com/questions/3258243/git-check-if-pull-needed
+     * @deprecated
      */
     public function getRemoteDiffStatus(string $remoteName, string $localBranch, ?string $remoteBranch = null): string
     {
-        if ($remoteBranch === null) {
-            $remoteBranch = $localBranch;
-        }
-
-        if (! $this->remoteBranchExists($remoteName, $remoteBranch)) {
-            return self::STATUS_NEED_PUSH;
-        }
-
-        if (! $this->branchExists($localBranch)) {
-            return self::STATUS_NEED_BRANCH;
-        }
-
-        $localRef = $this->process->mustRun(['git', 'rev-parse', $localBranch])->getOutput();
-        $remoteRef = $this->process->mustRun(['git', 'rev-parse', 'refs/remotes/' . $remoteName . '/' . $remoteBranch])->getOutput();
-        $baseRef = $this->process->mustRun(['git', 'merge-base', $localBranch, 'refs/remotes/' . $remoteName . '/' . $remoteBranch])->getOutput();
-
-        if ($localRef === $remoteRef) {
-            return self::STATUS_UP_TO_DATE;
-        }
-
-        if ($localRef === $baseRef) {
-            return self::STATUS_NEED_PULL;
-        }
-
-        if ($remoteRef === $baseRef) {
-            return self::STATUS_NEED_PUSH;
-        }
-
-        return self::STATUS_DIVERGED;
-    }
-
-    public function getActiveBranchName(): string
-    {
-        $activeBranch = trim($this->process->mustRun(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])->getOutput());
-
-        if ($activeBranch === 'HEAD') {
-            throw new \RuntimeException(
-                'You are currently in a detached HEAD state, unable to get active branch-name.' .
-                'Please run `git checkout` first.'
-            );
-        }
-
-        return $activeBranch;
+        $this->remote->getDiffStatus($remoteName, $localBranch, $remoteBranch)->value;
     }
 
     /**
-     * @return ($allowFailure is true ? string|null : string)
-     *
-     * @throws \RuntimeException
+     * @deprecated
+     */
+    public function getActiveBranchName(): string
+    {
+        return $this->branch->getCurrent();
+    }
+
+    /**
+     * @deprecated
      */
     public function getLastTagOnBranch(string $ref = 'HEAD', bool $allowFailure = false): ?string
     {
-        try {
-            return trim($this->process->mustRun(['git', 'describe', '--tags', '--abbrev=0', $ref])->getOutput());
-        } catch (\RuntimeException $e) {
-            if (! $allowFailure) {
-                throw $e;
-            }
-
-            return null;
-        }
+        return $this->branch->getLastTag($ref, $allowFailure);
     }
 
     /** @return array<int, string> ['v1.0', 'v1.5', 'v2.0' '...'] */
     public function getVersionBranches(?string $remote = null): array
     {
-        if ($remote) {
-            $branches = StringUtil::splitLines(
-                $this->process->mustRun(
-                    ['git', 'for-each-ref', '--format', '%(refname:strip=3)', 'refs/remotes/' . $remote]
-                )->getOutput()
-            );
-        } else {
-            $branches = StringUtil::splitLines(
-                $this->process->mustRun(['git', 'for-each-ref', '--format', '%(refname:short)', 'refs/heads/'])->getOutput()
-            );
-        }
-
-        $branches = array_filter($branches, static fn (string $branch) => preg_match('/^v?' . Version::VERSION_REGEX . '$/i', $branch) || preg_match('/^v?(?P<major>\d++)\.(?P<rel>x)$/', $branch));
-
-        // Sort in ascending order (lowest first).
-        // Trim v prefix as this causes problems with the comparator.
-        usort($branches, static function ($a, $b) {
-            $a = ltrim($a, 'vV');
-            $b = ltrim($b, 'vV');
-
-            if (mb_substr($a, -1, 1) === 'x') {
-                $a = substr_replace($a, '999', -1, 1);
-            }
-
-            if (mb_substr($b, -1, 1) === 'x') {
-                $b = substr_replace($b, '999', -1, 1);
-            }
-
-            if (Comparator::equalTo($a, $b)) {
-                return 0;
-            }
-
-            return Comparator::lessThan($a, $b) ? -1 : 1;
-        });
-
-        return array_merge([], $branches);
+        return $this->branch->getVersionBranches($remote);
     }
 
     /**
-     * Returns the log commits between two ranges (either commit or branch-name).
-     *
-     * Returned result is an array like:
-     * [
-     *     ['sha' => '...', 'author' => '...', 'subject' => '...', 'message' => '...'],
-     * ]
-     *
-     * Note;
-     * - Commits are by default returned in order of oldest to newest.
-     * - sha is the full commit-hash
-     * - author is the author name and e-mail address like "My Name <someone@example.com>"
-     * - Message contains the subject followed by two new lines and the actual message-body.
-     *
-     * Or an empty array when there are no logs.
-     *
-     * @return array<int, array{'sha': string, 'author': string, 'subject': string, 'message': string}>
+     * @deprecated
      */
     public function getLogBetweenCommits(string $start, string $end): array
     {
-        // First we get all the commits, then of each commit we get the actual data
-        // We can't use the commit data in one go because the body contains newlines
-
-        $commits = StringUtil::splitLines($this->process->mustRun(
-            [
-                'git',
-                '--no-pager',
-                'log',
-                '--oneline',
-                '--no-color',
-                '--format=%H',
-                '--reverse',
-                $start . '..' . $end,
-            ]
-        )->getOutput());
-
-        $results = array_map(
-            function ($commitHash) {
-                // 0=author, 1=subject, anything higher then 2 is the full body
-                $commitData = StringUtil::splitLines(
-                    $this->process->run(
-                        [
-                            'git',
-                            '--no-pager',
-                            'show',
-                            '--format=%an <%ae>%n%s%n%b',
-                            '--no-color',
-                            '--no-patch',
-                            $commitHash,
-                        ]
-                    )->getOutput()
-                );
-
-                $author = (string) array_shift($commitData);
-                $subject = (string) array_shift($commitData);
-
-                if (! preg_match('/^(feature|refactor|bug|minor|style|security)\s#\d*\s.*\s\(.*\)$/', $subject)) {
-                    return null;
-                }
-
-                return [
-                    'sha' => $commitHash,
-                    'author' => $author,
-                    'subject' => $subject,
-                    // subject + \n\n + {$commitData remaining}
-                    'message' => implode("\n", $commitData),
-                ];
-            },
-            $commits
-        );
-
-        return array_values(array_filter($results));
+        return array_map(static fn (CommitDto $model): array => $model->toArray(), iterator_to_array($this->commit->getLogBetweenCommits($start, $end)));
     }
 
     /**
-     * Returns a list of changed files between two ranges (either commit or branch-name).
-     *
-     * @return string[]
+     * @deprecated
      */
     public function getFileChangesBetween(string $start, string $end): array
     {
-        $results = StringUtil::splitLines($this->process->mustRun(
-            [
-                'git',
-                '--no-pager',
-                'log',
-                '--oneline',
-                '--no-color',
-                '--pretty=format:', // Ensures we only get the names, and not the commit refs
-                '--name-only',
-                $start . '..' . $end,
-            ]
-        )->getOutput());
-
-        return array_values(array_unique(array_filter($results)));
+        return $this->branch->getFileChangesBetween($start, $end);
     }
 
+    /**
+     * @deprecated
+     */
     public function remoteBranchExists(string $remote, string $branch): bool
     {
-        $this->remoteUpdate($remote);
-        $branches = StringUtil::splitLines(
-            $this->process->mustRun(
-                ['git', 'for-each-ref', '--format', '%(refname:strip=3)', 'refs/remotes/' . $remote]
-            )->getOutput()
-        );
-
-        return \in_array($branch, $branches, true);
+        return $this->remote->branchExists($remote, $branch);
     }
 
+    /**
+     * @deprecated
+     */
     public function branchExists(string $branch): bool
     {
-        $branches = StringUtil::splitLines(
-            $this->process->mustRun(['git', 'for-each-ref', '--format', '%(refname:short)', 'refs/heads/'])->getOutput()
-        );
-
-        return \in_array($branch, $branches, true);
+        return $this->branch->exists($branch);
     }
 
     public function deleteRemoteBranch(string $remote, string $ref): void
@@ -290,18 +152,12 @@ class Git
         $this->process->mustRun(['git', 'push', $remote, ':' . $ref]);
     }
 
+    /**
+     * @deprecated
+     */
     public function deleteBranch(string $name, bool $allowFailure = false): void
     {
-        if ($allowFailure) {
-            $this->process->run(['git', 'branch', '-d', $name], \sprintf('Could not delete branch "%s".', $name));
-        } else {
-            $this->process->mustRun(['git', 'branch', '-d', $name]);
-        }
-    }
-
-    public function deleteBranchWithForce(string $name): void
-    {
-        $this->process->run(['git', 'branch', '-D', $name], \sprintf('Could not delete branch "%s".', $name));
+        $this->branch->delete($name, $allowFailure);
     }
 
     public function addNotes(string $notes, string $commitHash, string $ref = 'github-comments'): void
@@ -385,7 +241,7 @@ class Git
 
     public function remoteUpdate(string $remote): void
     {
-        $this->process->mustRun(['git', 'fetch', $remote]);
+        $this->remote->fetch($remote);
     }
 
     public function isWorkingTreeReady()
@@ -401,17 +257,18 @@ class Git
         return true;
     }
 
+    /**
+     * @deprecated
+     */
     public function checkout(string $branchName, bool $createBranch = false): void
     {
-        $command = ['git', 'checkout'];
-
         if ($createBranch) {
-            $command[] = '-b';
+            $this->branch->checkoutNew($branchName);
+
+            return;
         }
 
-        $command[] = $branchName;
-
-        $this->process->mustRun($command);
+        $this->branch->checkout($branchName);
     }
 
     /** Checkout a remote branch or create it when it doesn't exit yet. */
@@ -462,68 +319,32 @@ class Git
         }
     }
 
+    /**
+     * @deprecated
+     */
     public function ensureBranchInSync(string $remote, string $localBranch, bool $allowPush = true): void
     {
-        $status = $this->getRemoteDiffStatus($remote, $localBranch);
-
-        if ($status === self::STATUS_NEED_PULL) {
-            $this->style->note(
-                \sprintf('Your local branch "%s" is outdated, running git pull.', $localBranch)
-            );
-
-            $this->pullRemote($remote, $localBranch);
-        } elseif ($status === self::STATUS_DIVERGED) {
-            throw new \RuntimeException(
-                'Cannot safely perform the operation. ' .
-                \sprintf('Your local and remote version of branch "%s" have differed.', $localBranch) .
-                ' Please resolve this problem manually.'
-            );
-        } elseif (! $allowPush && $status === self::STATUS_NEED_PUSH) {
-            throw new \RuntimeException(
-                \sprintf('Branch "%s" contains commits not existing in the remote version.', $localBranch) .
-                'Push is prohibited for this operation. Create a new branch and do a `git reset --hard`.'
-            );
-        }
+        $this->remote->ensureBranchInSync($remote, $localBranch, $allowPush);
     }
 
+    /**
+     * @deprecated
+     */
     public function ensureRemoteExists(string $name, string $url): void
     {
-        if ($url !== $this->getGitConfig('remote.' . $name . '.url')) {
-            $this->style->note(\sprintf('Adding remote "%s" with "%s".', $name, $url));
-
-            if (! $this->getGitConfig('remote.' . $name . '.url')) {
-                $this->process->mustRun(['git', 'remote', 'add', $name, $url]);
-            } else {
-                $this->setGitConfig('remote.' . $name . '.url', $url, true);
-            }
-        }
+        $this->config->ensureRemoteExists($name, $url);
     }
 
-    public function setGitConfig(string $config, int | string $value, bool $overwrite = false, string $section = 'local'): void
-    {
-        if (! $overwrite && $this->getGitConfig($config, $section) !== '') {
-            throw new \RuntimeException(
-                \sprintf(
-                    'Unable to set git config "%s" at %s, because the value is already set.',
-                    $config,
-                    $section
-                )
-            );
-        }
-
-        // Git adds a new value (superseding the old one) but we want replace the entire value.
-        // And `--replace-all` requires a regexp (WAT?) to properly replace the value...
-        $this->process->run(['git', 'config', '--' . $section, '--unset', $config]);
-        $this->process->mustRun(['git', 'config', '--' . $section, $config, $value]);
-    }
-
+    /**
+     * @deprecated
+     */
     public function getGitConfig(string $config, string $section = 'local', bool $all = false): string
     {
-        $process = $this->process->run(
-            ['git', 'config', '--' . $section, '--' . ($all ? 'get-all' : 'get'), $config]
-        );
+        if ($section === 'local') {
+            return $all ? $this->config->getAllLocal($config) : $this->config->getLocal($config);
+        }
 
-        return trim($process->getOutput());
+        return $all ? $this->config->getAllGlobal($config) : $this->config->getGlobal($config);
     }
 
     /** @return array{'host': string, 'org': string, 'repo': string} */
@@ -599,17 +420,12 @@ class Git
             $gitDir = trim($this->process->run(['git', 'rev-parse', '--git-dir'])->getOutput());
 
             if ($gitDir === '.git') {
-                $gitDir = $this->getCwd() . '/.git';
+                $gitDir = $this->filesystem->getCwd() . '/.git';
             }
 
             $this->gitDir = $gitDir;
         }
 
         return $this->gitDir;
-    }
-
-    protected function getCwd(): string
-    {
-        return getcwd();
     }
 }

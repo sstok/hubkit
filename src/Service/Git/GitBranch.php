@@ -13,35 +13,160 @@ declare(strict_types=1);
 
 namespace HubKit\Service\Git;
 
-use HubKit\Service\CliProcess;
-use HubKit\Service\Git;
-use Symfony\Component\Console\Style\StyleInterface;
+use Composer\Semver\Comparator;
+use HubKit\Model\CommitDto;
+use HubKit\StringUtil;
+use Rollerworks\Component\Version\Version;
 
-class GitBranch extends Git
+class GitBranch extends GitBase
 {
-    public function __construct(CliProcess $process, StyleInterface $style)
+    public function getCurrent(): string
     {
-        $this->process = $process;
-        $this->style = $style;
+        $activeBranch = trim($this->process->mustRun(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])->getOutput());
+
+        if ($activeBranch === 'HEAD') {
+            throw new \RuntimeException(
+                'You are currently in a detached HEAD state, unable to get active branch-name.' .
+                'Please run `git checkout` first.'
+            );
+        }
+
+        return $activeBranch;
     }
 
-    public function checkoutNew(string $branch): void
+    public function exists(string $branch): bool
     {
-        $this->checkout($branch, true);
+        $branches = StringUtil::splitLines($this->process->mustRun(['git', 'for-each-ref', '--format', '%(refname:short)', 'refs/heads/'])->getOutput());
+
+        return \in_array($branch, $branches, true);
     }
 
-    public function add(string $file): void
+    public function delete(string $name, bool $allowFailure = false): void
     {
-        $this->process->mustRun(['git', 'add', $file]);
+        if ($allowFailure) {
+            $this->process->run(['git', 'branch', '-d', $name], \sprintf('Could not delete branch "%s".', $name));
+        } else {
+            $this->process->mustRun(['git', 'branch', '-d', $name]);
+        }
     }
 
-    public function commit(string $message): void
+    public function forceDelete(string $name): void
     {
-        $this->process->mustRun(['git', 'commit', '-m', $message]);
+        $this->process->run(['git', 'branch', '-D', $name], \sprintf('Could not delete branch "%s".', $name));
     }
 
-    public function commitAll(string $message): void
+    public function checkout(string $branchName): void
     {
-        $this->process->mustRun(['git', 'commit', '-a', '-m', $message]);
+        $this->process->mustRun(['git', 'checkout', $branchName]);
     }
+
+    public function checkoutNew(string $branchName): void
+    {
+        $this->process->mustRun(['git', 'checkout', '-b', $branchName]);
+    }
+
+    public function merge(string $branchName, MergeOptions $options): void
+    {
+        $cmd = ['git', 'merge'];
+
+        if ($options->has(MergeOptions::SQUASH)) {
+            $cmd[] = '--squash';
+        }
+
+        if ($options->has(MergeOptions::NO_FF)) {
+            $cmd[] = '--no-ff';
+        }
+
+        if ($options->has(MergeOptions::WITH_LOG)) {
+            $cmd[] = '--log';
+        }
+
+        if ($options->has(MergeOptions::NO_COMMIT)) {
+            $cmd[] = '--no-commit';
+        }
+
+        $cmd[] = $branchName;
+
+        $this->process->mustRun($cmd);
+    }
+
+    /**
+     * @return ($allowFailure is true ? string|null : string)
+     *
+     * @throws \RuntimeException
+     */
+    public function getLastTag(string $ref = 'HEAD', bool $allowFailure = false): ?string
+    {
+        try {
+            return trim($this->process->mustRun(['git', 'describe', '--tags', '--abbrev=0', $ref])->getOutput());
+        } catch (\RuntimeException $e) {
+            if (! $allowFailure) {
+                throw $e;
+            }
+
+            return null;
+        }
+    }
+
+    /**
+     * @return string[] ['v1.0', 'v1.5', 'v2.0' '...']
+     */
+    public function getVersionBranches(?string $remote = null): array
+    {
+        if ($remote) {
+            $cmd = ['git', 'for-each-ref', '--format', '%(refname:strip=3)', 'refs/remotes/' . $remote];
+        } else {
+            $cmd = ['git', 'for-each-ref', '--format', '%(refname:short)', 'refs/heads/'];
+        }
+
+        $branches = StringUtil::splitLines($this->process->mustRun($cmd)->getOutput());
+        $branches = array_filter($branches, static fn (string $branch) => preg_match('/^v?' . Version::VERSION_REGEX . '$/i', $branch) || preg_match('/^v?(?P<major>\d++)\.(?P<rel>x)$/', $branch));
+
+        // Sort in ascending order (lowest first).
+        // Trim v prefix as this causes problems with the comparator.
+        usort($branches, static function ($a, $b) {
+            $a = ltrim($a, 'vV');
+            $b = ltrim($b, 'vV');
+
+            if (mb_substr($a, -1, 1) === 'x') {
+                $a = substr_replace($a, '999', -1, 1);
+            }
+
+            if (mb_substr($b, -1, 1) === 'x') {
+                $b = substr_replace($b, '999', -1, 1);
+            }
+
+            if (Comparator::equalTo($a, $b)) {
+                return 0;
+            }
+
+            return Comparator::lessThan($a, $b) ? -1 : 1;
+        });
+
+        return array_merge([], $branches);
+    }
+
+    /**
+     * Returns a list of changed files between two ranges (either commit or branch-name).
+     *
+     * @return string[]
+     */
+    public function getFileChangesBetween(string $start, string $end): array
+    {
+        $results = StringUtil::splitLines($this->process->mustRun(
+            [
+                'git',
+                '--no-pager',
+                'log',
+                '--oneline',
+                '--no-color',
+                '--pretty=format:', // Ensures we only get the names, and not the commit refs
+                '--name-only',
+                $start . '..' . $end,
+            ]
+        )->getOutput());
+
+        return array_values(array_unique(array_filter($results)));
+    }
+
 }
