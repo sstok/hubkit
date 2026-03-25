@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace HubKit\Model;
+namespace HubKit\Model\Git;
 
-final readonly class CommitDto
+final readonly class Commit
 {
     public function __construct(
         public string $sha,

@@ -58,6 +58,10 @@ class CliProcess
      */
     public function run(array | Process $cmd, ?string $error = null, ?callable $callback = null, int $verbosity = OutputInterface::VERBOSITY_VERY_VERBOSE): Process
     {
+        if (is_array($cmd)) {
+            $cmd = $this->processCmd($cmd);
+        }
+
         return $this->processHelper->run($this->output, $cmd, $error, $callback, $verbosity);
     }
 
@@ -80,6 +84,10 @@ class CliProcess
      */
     public function mustRun(array | Process $cmd, ?string $error = null, ?callable $callback = null): Process
     {
+        if (is_array($cmd)) {
+            $cmd = $this->processCmd($cmd);
+        }
+
         return $this->processHelper->mustRun($this->output, $cmd, $error, $callback);
     }
 
@@ -92,5 +100,21 @@ class CliProcess
     public function wrapCallback(Process $process, ?callable $callback = null): callable
     {
         return $this->processHelper->wrapCallback($this->output, $process, $callback);
+    }
+
+    /**
+     * @param mixed[] $cmd
+     *
+     * @return mixed[]
+     */
+    private function processCmd(array $cmd): array
+    {
+        foreach ($cmd as $i => $value) {
+            if ($value instanceof \Stringable) {
+                $cmd[$i] = (string) $value;
+            }
+        }
+
+        return $cmd;
     }
 }

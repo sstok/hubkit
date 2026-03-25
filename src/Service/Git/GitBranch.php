@@ -14,7 +14,9 @@ declare(strict_types=1);
 namespace HubKit\Service\Git;
 
 use Composer\Semver\Comparator;
-use HubKit\Model\CommitDto;
+use HubKit\Model\Git\GitMultiRef;
+use HubKit\Model\Git\GitRef;
+use HubKit\Model\Git\RemoteName;
 use HubKit\StringUtil;
 use Rollerworks\Component\Version\Version;
 
@@ -34,14 +36,14 @@ class GitBranch extends GitBase
         return $activeBranch;
     }
 
-    public function exists(string $branch): bool
+    public function exists(GitRef $branch): bool
     {
         $branches = StringUtil::splitLines($this->process->mustRun(['git', 'for-each-ref', '--format', '%(refname:short)', 'refs/heads/'])->getOutput());
 
         return \in_array($branch, $branches, true);
     }
 
-    public function delete(string $name, bool $allowFailure = false): void
+    public function delete(GitRef $name, bool $allowFailure = false): void
     {
         if ($allowFailure) {
             $this->process->run(['git', 'branch', '-d', $name], \sprintf('Could not delete branch "%s".', $name));
@@ -50,22 +52,22 @@ class GitBranch extends GitBase
         }
     }
 
-    public function forceDelete(string $name): void
+    public function forceDelete(GitRef $name): void
     {
         $this->process->run(['git', 'branch', '-D', $name], \sprintf('Could not delete branch "%s".', $name));
     }
 
-    public function checkout(string $branchName): void
+    public function checkout(GitRef $branchName): void
     {
         $this->process->mustRun(['git', 'checkout', $branchName]);
     }
 
-    public function checkoutNew(string $branchName): void
+    public function checkoutNew(GitRef $branchName): void
     {
         $this->process->mustRun(['git', 'checkout', '-b', $branchName]);
     }
 
-    public function merge(string $branchName, MergeOptions $options): void
+    public function merge(GitRef $branchName, MergeOptions $options): void
     {
         $cmd = ['git', 'merge'];
 
@@ -95,7 +97,7 @@ class GitBranch extends GitBase
      *
      * @throws \RuntimeException
      */
-    public function getLastTag(string $ref = 'HEAD', bool $allowFailure = false): ?string
+    public function getLastTag(GitRef $ref = new GitRef('HEAD'), bool $allowFailure = false): ?string
     {
         try {
             return trim($this->process->mustRun(['git', 'describe', '--tags', '--abbrev=0', $ref])->getOutput());
@@ -111,7 +113,7 @@ class GitBranch extends GitBase
     /**
      * @return string[] ['v1.0', 'v1.5', 'v2.0' '...']
      */
-    public function getVersionBranches(?string $remote = null): array
+    public function getVersionBranches(?RemoteName $remote = null): array
     {
         if ($remote) {
             $cmd = ['git', 'for-each-ref', '--format', '%(refname:strip=3)', 'refs/remotes/' . $remote];
@@ -151,8 +153,11 @@ class GitBranch extends GitBase
      *
      * @return string[]
      */
-    public function getFileChangesBetween(string $start, string $end): array
+    public function getFileChangesBetween(GitMultiRef $range): array
     {
+        $start = $range->source;
+        $end = $range->target;
+
         $results = StringUtil::splitLines($this->process->mustRun(
             [
                 'git',
@@ -168,5 +173,4 @@ class GitBranch extends GitBase
 
         return array_values(array_unique(array_filter($results)));
     }
-
 }

@@ -4,21 +4,48 @@ declare(strict_types=1);
 
 namespace HubKit\Service\Git;
 
-use Composer\Semver\Comparator;
+use HubKit\Model\Git\GitMultiRef;
+use HubKit\Model\Git\GitRef;
+use HubKit\Model\Git\RemoteName;
 use HubKit\StringUtil;
-use Rollerworks\Component\Version\Version;
 
 class GitRemote extends GitBase
 {
+    public function clone(string $url, string $directory = '.', RemoteName $remoteName = new RemoteName('origin'), ?int $depth = null): void
+    {
+        $command = ['git', 'clone', $url, $directory];
+
+        if ($depth !== null) {
+            $command[] = '--depth';
+            $command[] = $depth;
+        }
+
+        $command[] = '--origin';
+        $command[] = $remoteName;
+
+        $this->process->mustRun($command);
+    }
+
+    public function checkout(RemoteName $remote, GitRef $ref): void
+    {
+        $this->process->mustRun(['git', 'checkout', 'remotes/' . $remote . '/' . $ref]);
+    }
+
+    public function checkoutNew(RemoteName $remote, GitRef $source, GitRef $name): void
+    {
+        $name->expectBranch();
+
+        $this->process->mustRun(['git', 'checkout', 'remotes/' . $remote . '/' . $source, '-b', $name]);
+    }
+
     /**
      * @see https://gist.github.com/WebPlatformDocs/437f763b948c926ca7ba
      * @see https://stackoverflow.com/questions/3258243/git-check-if-pull-needed
      */
-    public function getDiffStatus(string $remoteName, string $localBranch, ?string $remoteBranch = null): RemoteDiffStatus
+    public function getDiffStatus(RemoteName $remoteName, GitMultiRef $branches): RemoteDiffStatus
     {
-        if ($remoteBranch === null) {
-            $remoteBranch = $localBranch;
-        }
+        $localBranch = $branches->source;
+        $remoteBranch = $branches->target;
 
         if (! $this->branchExists($remoteName, $remoteBranch)) {
             return RemoteDiffStatus::NeedPush;
@@ -43,8 +70,9 @@ class GitRemote extends GitBase
         return RemoteDiffStatus::Diverged;
     }
 
-    public function branchExists(string $remote, string $branch): bool
+    public function branchExists(RemoteName $remote, GitRef $branch): bool
     {
+        $branch->expectBranch();
         $this->fetch($remote);
 
         $branches = StringUtil::splitLines(
@@ -53,10 +81,10 @@ class GitRemote extends GitBase
             )->getOutput()
         );
 
-        return \in_array($branch, $branches, true);
+        return \in_array((string) $branch, $branches, true);
     }
 
-    public function fetch(string $remote, ?string $ref = null): void
+    public function fetch(RemoteName $remote, ?GitRef $ref = null): void
     {
         if ($ref) {
             $this->process->mustRun(['git', 'fetch', $remote, $ref]);
@@ -67,7 +95,7 @@ class GitRemote extends GitBase
         $this->process->mustRun(['git', 'fetch', $remote]);
     }
 
-    public function pull(string $remote, bool $rebase = true, ?string $ref = null): void
+    public function pull(RemoteName $remote, bool $rebase = true, ?GitRef $ref = null): void
     {
         $this->guardWorkingTreeReady();
 
@@ -86,16 +114,34 @@ class GitRemote extends GitBase
         $this->process->mustRun($cmd);
     }
 
-    public function ensureBranchInSync(string $remote, string $localBranch, bool $allowPush = true): void
+    public function pushToRemote(RemoteName $remote, PushOptions $options = null, GitMultiRef ...$ref): void
+    {
+        $options ??= new PushOptions();
+
+        $command = ['git', 'push'];
+
+        if ($options->has(PushOptions::SET_UPSTREAM)) {
+            $command[] = '--set-upstream';
+        }
+
+        if ($options->has(PushOptions::FORCE_WITH_LEASE)) {
+            $command[] = '--force-with-lease';
+        } elseif ($options->has(PushOptions::FORCE)) {
+            $command[] = '--force';
+        }
+
+        $command[] = $remote;
+
+        $this->process->mustRun(array_merge($command, $ref));
+    }
+
+    public function ensureBranchInSync(RemoteName $remote, GitMultiRef $localBranch, bool $allowPush = true): void
     {
         $status = $this->getDiffStatus($remote, $localBranch);
 
         if ($status === RemoteDiffStatus::NeedPull) {
-            $this->style->note(
-                \sprintf('Your local branch "%s" is outdated, running git pull.', $localBranch)
-            );
-
-            $this->pull($remote, true, $localBranch);
+            $this->style->note(\sprintf('Your local branch "%s" is outdated, running git pull.', $localBranch));
+            $this->pull($remote, true, $localBranch->source);
 
             return;
         }
@@ -115,6 +161,4 @@ class GitRemote extends GitBase
             );
         }
     }
-
-
 }

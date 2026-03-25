@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace HubKit\Service\Git;
 
-use HubKit\Model\CommitDto;
+use HubKit\Model\Git\Commit;
 use HubKit\StringUtil;
 
 class GitCommit extends GitBase
@@ -12,7 +12,7 @@ class GitCommit extends GitBase
     /**
      * Returns the log commits between two ranges (either commit or branch-name).
      *
-     * @return \Generator<string, CommitDto>|CommitDto[] Returns in order of oldest to newest
+     * @return \Generator<string, Commit>|Commit[] Returns in order of oldest to newest
      */
     public function getLogBetweenCommits(string $start, string $end, bool $mergeOnly = true): iterable
     {
@@ -49,7 +49,7 @@ class GitCommit extends GitBase
         return [];
     }
 
-    public function get(string $commitHash): CommitDto
+    public function get(string $commitHash): Commit
     {
         // 0=parent(s), 1=author, 2=author-email, 3=subject, anything higher then 3 is the full message
         $commitData = StringUtil::splitLines(
@@ -72,6 +72,6 @@ class GitCommit extends GitBase
         $subject = (string) array_shift($commitData);
         $isMergeCommit = str_contains($parents, ' ');
 
-        return new CommitDto($commitHash, $author, $authorEmail, $subject, implode("\n", $commitData), $isMergeCommit);
+        return new Commit($commitHash, $author, $authorEmail, $subject, implode("\n", $commitData), $isMergeCommit);
     }
 }

@@ -14,7 +14,10 @@ declare(strict_types=1);
 namespace HubKit\Service;
 
 use HubKit\Exception\WorkingTreeIsNotReady;
-use HubKit\Model\CommitDto;
+use HubKit\Model\Git\Commit;
+use HubKit\Model\Git\GitMultiRef;
+use HubKit\Model\Git\GitRef;
+use HubKit\Model\Git\RemoteName;
 use HubKit\Service\Git\GitBranch;
 use HubKit\Service\Git\GitCommit;
 use HubKit\Service\Git\GitConfig;
@@ -90,7 +93,7 @@ class Git
      */
     public function getRemoteDiffStatus(string $remoteName, string $localBranch, ?string $remoteBranch = null): string
     {
-        $this->remote->getDiffStatus($remoteName, $localBranch, $remoteBranch)->value;
+        $this->remote->getDiffStatus(new RemoteName($remoteName), new GitMultiRef($localBranch, $remoteBranch ?? $localBranch))->value;
     }
 
     /**
@@ -120,7 +123,7 @@ class Git
      */
     public function getLogBetweenCommits(string $start, string $end): array
     {
-        return array_map(static fn (CommitDto $model): array => $model->toArray(), iterator_to_array($this->commit->getLogBetweenCommits($start, $end)));
+        return array_map(static fn (Commit $model): array => $model->toArray(), iterator_to_array($this->commit->getLogBetweenCommits($start, $end)));
     }
 
     /**
@@ -184,7 +187,9 @@ class Git
         $this->process->run($commands, 'Adding git notes failed.');
     }
 
-    /** @param array<int, string>|string $ref either a single ref of array of references */
+    /**
+     * @param array<int, string>|string $ref either a single ref of array of references
+     */
     public function pushToRemote(string $remote, array | string $ref, bool $setUpstream = false, bool $force = false): void
     {
         $ref = (array) $ref;
@@ -219,26 +224,29 @@ class Git
         $this->process->mustRun(array_merge($command, $ref));
     }
 
+    /**
+     * @deprecated
+     */
     public function pullRemote(string $remote, ?string $ref = null): void
     {
         $this->guardWorkingTreeReady();
 
-        $command = ['git', 'pull', '--rebase', $remote];
-
-        if ($ref) {
-            $command[] = $ref;
-        }
-
-        $this->process->mustRun($command);
+        $this->remote->pull($remote, true, $ref);
     }
 
+    /**
+     * @deprecated
+     */
     public function fetchRemote(string $remote, string $ref): void
     {
         $this->guardWorkingTreeReady();
 
-        $this->process->mustRun(['git', 'fetch', $remote, $ref]);
+        $this->remote->fetch($remote, $ref);
     }
 
+    /**
+     * @deprecated
+     */
     public function remoteUpdate(string $remote): void
     {
         $this->remote->fetch($remote);
@@ -271,7 +279,9 @@ class Git
         $this->branch->checkout($branchName);
     }
 
-    /** Checkout a remote branch or create it when it doesn't exit yet. */
+    /**
+     * @deprecated
+     */
     public function checkoutRemoteBranch(string $remote, string $branchName, bool $create = true): void
     {
         if ($this->branchExists($branchName)) {
@@ -280,14 +290,11 @@ class Git
             return;
         }
 
-        $cmd = ['git', 'checkout', 'remotes/' . $remote . '/' . $branchName];
-
         if ($create) {
-            $cmd[] = '-b';
-            $cmd[] = $branchName;
+            $this->remote->checkoutNew($remote, $branchName);
+        } else {
+            $this->remote->checkout($remote, $branchName);
         }
-
-        $this->process->mustRun($cmd);
     }
 
     public function trackRemoteBranch(string $remote, string $branchName): void
@@ -398,20 +405,12 @@ class Git
         return $info;
     }
 
-    public function clone(string $ssh_url, string $remoteName = 'origin', ?int $depth = null): void
+    /**
+     * @deprecated
+     */
+    public function clone(string $url, string $remoteName = 'origin', ?int $depth = null): void
     {
-        $command = ['git', 'clone', $ssh_url, '.'];
-
-        if ($depth !== null) {
-            $command[] = '--depth';
-            $command[] = $depth;
-        }
-
-        $this->process->mustRun($command);
-
-        if ($remoteName !== 'origin') {
-            $this->process->mustRun(['git', 'remote', 'rename', 'origin', $remoteName]);
-        }
+        $this->remote->clone($url, '.', $remoteName, $depth);
     }
 
     public function getGitDirectory(): string
