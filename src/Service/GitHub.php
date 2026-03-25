@@ -39,14 +39,14 @@ class GitHub
 
     public function autoConfigure(Git $git): void
     {
-        $repo = $git->getRemoteInfo(REMOTE_MAIN);
+        $repo = $git->remote()->getRemoteInfo(REMOTE_MAIN);
 
-        if ($repo['org'] === '') {
+        if ($repo->organization === null) {
             throw new \RuntimeException(\sprintf('Remote "%s" is missing or is missing information, unable to configure GitHub gateway.', REMOTE_MAIN));
         }
 
-        $this->initializeForHost($repo['host']);
-        $this->setRepository($repo['org'], $repo['repo']);
+        $this->initializeForHost($repo->host);
+        $this->setRepository($repo->organization, $repo->repository);
     }
 
     public function initializeForHost(?string $hostname = null): void

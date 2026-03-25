@@ -2,15 +2,30 @@
 
 declare(strict_types=1);
 
+/*
+ * This file is part of the HuPKit package.
+ *
+ * (c) Sebastiaan Stok <s.stok@rollerscapes.net>
+ *
+ * This source file is subject to the MIT license that is bundled
+ * with this source code in the file LICENSE.
+ */
+
 namespace HubKit\Service\Git;
 
 use HubKit\Model\Git\GitMultiRef;
 use HubKit\Model\Git\GitRef;
+use HubKit\Model\Git\RemoteInfo;
 use HubKit\Model\Git\RemoteName;
 use HubKit\StringUtil;
 
 class GitRemote extends GitBase
 {
+    public function getRemoteInfo(RemoteName $name = new RemoteName(REMOTE_MAIN)): RemoteInfo
+    {
+        return RemoteInfo::fromString($this->git->config()->getLocal('remote.' . $name . '.url'), $name);
+    }
+
     public function clone(string $url, string $directory = '.', RemoteName $remoteName = new RemoteName('origin'), ?int $depth = null): void
     {
         $command = ['git', 'clone', $url, $directory];
@@ -114,7 +129,7 @@ class GitRemote extends GitBase
         $this->process->mustRun($cmd);
     }
 
-    public function pushToRemote(RemoteName $remote, PushOptions $options = null, GitMultiRef ...$ref): void
+    public function push(RemoteName $remote, ?PushOptions $options = null, GitMultiRef ...$ref): void
     {
         $options ??= new PushOptions();
 
@@ -133,6 +148,12 @@ class GitRemote extends GitBase
         $command[] = $remote;
 
         $this->process->mustRun(array_merge($command, $ref));
+    }
+
+    public function trackBranch(RemoteName $remote, GitRef $branch): void
+    {
+        $branch->expectBranch();
+        $this->process->mustRun(['git', 'branch', '--set-upstream-to', $remote . '/' . $branch, $branch]);
     }
 
     public function ensureBranchInSync(RemoteName $remote, GitMultiRef $localBranch, bool $allowPush = true): void
@@ -160,5 +181,41 @@ class GitRemote extends GitBase
                 'Push is prohibited for this operation. Create a new branch and do a `git reset --hard`.'
             );
         }
+    }
+
+    public function ensureNotesFetching(RemoteName $remote): void
+    {
+        $fetches = StringUtil::splitLines($this->git->config()->getAllLocal('remote.' . $remote . '.fetch'));
+
+        if (! \in_array('+refs/notes/*:refs/notes/*', $fetches, true)) {
+            $this->style->note(\sprintf('Set fetching of notes for remote "%s".', $remote));
+            $this->process->mustRun(['git', 'config', '--add', '--local', 'remote.' . $remote . '.fetch', '+refs/notes/*:refs/notes/*']);
+        }
+    }
+
+    public function addNotes(string $notes, GitRef $commitHash, string $ref = 'github-comments'): void
+    {
+        // Cannot add empty notes
+        if (mb_trim($notes) === '') {
+            return;
+        }
+
+        $commitHash->expectHash();
+
+        $tmpName = $this->filesystem->newTempFilename();
+        $this->filesystem->dumpFile($tmpName, $notes);
+
+        $commands = [
+            'git',
+            'notes',
+            '--ref=' . $ref,
+            'add',
+            '--no-stripspace',
+            '-F',
+            $tmpName,
+            $commitHash,
+        ];
+
+        $this->process->run($commands, 'Adding git notes failed.');
     }
 }

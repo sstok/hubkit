@@ -30,6 +30,8 @@ final class GitTest extends TestCase
 
     protected function setUp(): void
     {
+        // XXX Generate a new repository for each test with a new commit history to avoid side effects. Use `pure` content to always get the same hashes.
+
         rename(__DIR__ . '/../../Fixtures/git_example_changelog_project/git', __DIR__ . '/../../Fixtures/git_example_changelog_project/.git');
     }
 
@@ -37,17 +39,19 @@ final class GitTest extends TestCase
     public function it_returns_all_hubkit_merge_commits(): void
     {
         $expectedResult = [
-            [
+            'e8db760866833c07e9d2b0fd8006f1e85c85afd4' => [
+                'sha' => 'e8db760866833c07e9d2b0fd8006f1e85c85afd4',
+                'author' => 'example-name <name@example.com>',
+                'subject' => 'Merge pull request #1 from username123/1/test',
+                'message' => 'Add a.txt',
+                'merge' => true,
+            ],
+            '0721910237402965bc6cf88a6aab2d3bb84624ad' => [
                 'sha' => '0721910237402965bc6cf88a6aab2d3bb84624ad',
                 'author' => 'example-name <name@example.com>',
                 'subject' => 'feature #2 Example subject for changelog 2 (username123)',
                 'message' => 'Add b.txt',
-            ],
-            [
-                'sha' => '1f9376faffc80c43d64a6b9482359520e168952b',
-                'author' => 'example-name <name@example.com>',
-                'subject' => 'feature #3 Example subject for changelog 3 (username123)',
-                'message' => '',
+                'merge' => true,
             ],
         ];
 

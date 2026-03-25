@@ -24,7 +24,7 @@ class GitBranch extends GitBase
 {
     public function getCurrent(): string
     {
-        $activeBranch = trim($this->process->mustRun(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])->getOutput());
+        $activeBranch = mb_trim($this->process->mustRun(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])->getOutput());
 
         if ($activeBranch === 'HEAD') {
             throw new \RuntimeException(
@@ -100,7 +100,7 @@ class GitBranch extends GitBase
     public function getLastTag(GitRef $ref = new GitRef('HEAD'), bool $allowFailure = false): ?string
     {
         try {
-            return trim($this->process->mustRun(['git', 'describe', '--tags', '--abbrev=0', $ref])->getOutput());
+            return mb_trim($this->process->mustRun(['git', 'describe', '--tags', '--abbrev=0', $ref])->getOutput());
         } catch (\RuntimeException $e) {
             if (! $allowFailure) {
                 throw $e;
@@ -127,8 +127,8 @@ class GitBranch extends GitBase
         // Sort in ascending order (lowest first).
         // Trim v prefix as this causes problems with the comparator.
         usort($branches, static function ($a, $b) {
-            $a = ltrim($a, 'vV');
-            $b = ltrim($b, 'vV');
+            $a = mb_ltrim($a, 'vV');
+            $b = mb_ltrim($b, 'vV');
 
             if (mb_substr($a, -1, 1) === 'x') {
                 $a = substr_replace($a, '999', -1, 1);

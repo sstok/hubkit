@@ -17,12 +17,13 @@ use HubKit\Exception\WorkingTreeIsNotReady;
 use HubKit\Model\Git\Commit;
 use HubKit\Model\Git\GitMultiRef;
 use HubKit\Model\Git\GitRef;
+use HubKit\Model\Git\RemoteInfo;
 use HubKit\Model\Git\RemoteName;
 use HubKit\Service\Git\GitBranch;
 use HubKit\Service\Git\GitCommit;
 use HubKit\Service\Git\GitConfig;
 use HubKit\Service\Git\GitRemote;
-use HubKit\StringUtil;
+use HubKit\Service\Git\PushOptions;
 use Symfony\Component\Console\Style\StyleInterface;
 use Symfony\Component\Process\Process;
 
@@ -39,11 +40,12 @@ class Git
     private GitBranch $branch;
     private GitRemote $remote;
     private GitCommit $commit;
+    private GitConfig $config;
 
     public function __construct(
         private CliProcess $process,
         private Filesystem $filesystem,
-        private StyleInterface $style
+        StyleInterface $style,
     ) {
         $this->branch = new GitBranch($this, $process, $style, $filesystem);
         $this->remote = new GitRemote($this, $process, $style, $filesystem);
@@ -59,7 +61,7 @@ class Git
             return false;
         }
 
-        $directory = trim($process->getOutput());
+        $directory = mb_trim($process->getOutput());
 
         if ($directory === '') {
             return false;
@@ -88,28 +90,22 @@ class Git
         return $this->config;
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function getRemoteDiffStatus(string $remoteName, string $localBranch, ?string $remoteBranch = null): string
     {
         $this->remote->getDiffStatus(new RemoteName($remoteName), new GitMultiRef($localBranch, $remoteBranch ?? $localBranch))->value;
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function getActiveBranchName(): string
     {
         return $this->branch->getCurrent();
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function getLastTagOnBranch(string $ref = 'HEAD', bool $allowFailure = false): ?string
     {
-        return $this->branch->getLastTag($ref, $allowFailure);
+        return $this->branch->getLastTag(new GitRef($ref), $allowFailure);
     }
 
     /** @return array<int, string> ['v1.0', 'v1.5', 'v2.0' '...'] */
@@ -118,36 +114,28 @@ class Git
         return $this->branch->getVersionBranches($remote);
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function getLogBetweenCommits(string $start, string $end): array
     {
         return array_map(static fn (Commit $model): array => $model->toArray(), iterator_to_array($this->commit->getLogBetweenCommits($start, $end)));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function getFileChangesBetween(string $start, string $end): array
     {
-        return $this->branch->getFileChangesBetween($start, $end);
+        return $this->branch->getFileChangesBetween(new GitMultiRef($start, $end));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function remoteBranchExists(string $remote, string $branch): bool
     {
-        return $this->remote->branchExists($remote, $branch);
+        return $this->remote->branchExists(new RemoteName($remote), new GitRef($branch));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function branchExists(string $branch): bool
     {
-        return $this->branch->exists($branch);
+        return $this->branch->exists(new GitRef($branch));
     }
 
     public function deleteRemoteBranch(string $remote, string $ref): void
@@ -155,151 +143,97 @@ class Git
         $this->process->mustRun(['git', 'push', $remote, ':' . $ref]);
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function deleteBranch(string $name, bool $allowFailure = false): void
     {
-        $this->branch->delete($name, $allowFailure);
+        $this->branch->delete(new GitRef($name), $allowFailure);
     }
 
+    /** @deprecated */
     public function addNotes(string $notes, string $commitHash, string $ref = 'github-comments'): void
     {
-        $tmpName = $this->filesystem->newTempFilename();
-        file_put_contents($tmpName, $notes);
-
-        // Cannot add empty notes
-        if (trim($notes) === '') {
-            return;
-        }
-
-        $commands = [
-            'git',
-            'notes',
-            '--ref=' . $ref,
-            'add',
-            '--no-stripspace',
-            '-F',
-            $tmpName,
-            $commitHash,
-        ];
-
-        $this->process->run($commands, 'Adding git notes failed.');
+        $this->remote->addNotes($notes, new GitRef($commitHash), $ref);
     }
 
-    /**
-     * @param array<int, string>|string $ref either a single ref of array of references
-     */
+    /** @deprecated */
     public function pushToRemote(string $remote, array | string $ref, bool $setUpstream = false, bool $force = false): void
     {
-        $ref = (array) $ref;
-        $ref = array_map(
-            static function ($ref) {
-                if ($ref[0] === ':') {
-                    throw new \RuntimeException(
-                        \sprintf(
-                            'Push target "%s" does not include the local branch-name, please report this bug!',
-                            $ref
-                        )
-                    );
-                }
-
-                return $ref;
-            },
-            $ref
-        );
-
-        $command = ['git', 'push'];
+        $options = new PushOptions();
 
         if ($setUpstream) {
-            $command[] = '--set-upstream';
+            $options->add(PushOptions::SET_UPSTREAM);
         }
 
         if ($force) {
-            $command[] = '--force';
+            $options->add(PushOptions::FORCE);
         }
 
-        $command[] = $remote;
-
-        $this->process->mustRun(array_merge($command, $ref));
+        $this->remote->push(new RemoteName($remote), null, new GitMultiRef($ref, $ref));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function pullRemote(string $remote, ?string $ref = null): void
     {
-        $this->guardWorkingTreeReady();
-
-        $this->remote->pull($remote, true, $ref);
+        $this->remote->pull(new RemoteName($remote), true, $ref ? new GitRef($ref) : null);
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function fetchRemote(string $remote, string $ref): void
     {
-        $this->guardWorkingTreeReady();
-
-        $this->remote->fetch($remote, $ref);
+        $this->remote->fetch(new RemoteName($remote), new GitRef($ref));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function remoteUpdate(string $remote): void
     {
-        $this->remote->fetch($remote);
+        $this->remote->fetch(new RemoteName($remote));
     }
 
     public function isWorkingTreeReady()
     {
-        if (trim($this->process->mustRun(['git', 'status', '--porcelain', '--untracked-files=no'])->getOutput()) !== '') {
+        if (mb_trim($this->process->mustRun(['git', 'status', '--porcelain', '--untracked-files=no'])->getOutput()) !== '') {
             return false;
         }
 
-        if (trim($this->process->run(Process::fromShellCommandline('ls `git rev-parse --git-dir` | grep rebase'))->getOutput()) !== '') {
+        if (mb_trim($this->process->run(Process::fromShellCommandline('ls `git rev-parse --git-dir` | grep rebase'))->getOutput()) !== '') {
             return false;
         }
 
         return true;
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function checkout(string $branchName, bool $createBranch = false): void
     {
         if ($createBranch) {
-            $this->branch->checkoutNew($branchName);
+            $this->branch->checkoutNew(new GitRef($branchName));
 
             return;
         }
 
-        $this->branch->checkout($branchName);
+        $this->branch->checkout(new GitRef($branchName));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function checkoutRemoteBranch(string $remote, string $branchName, bool $create = true): void
     {
         if ($this->branchExists($branchName)) {
-            $this->process->mustRun(['git', 'checkout', $branchName]);
+            $this->branch->checkout(new GitRef($branchName));
 
             return;
         }
 
         if ($create) {
-            $this->remote->checkoutNew($remote, $branchName);
+            $this->remote->checkoutNew(new RemoteName($remote), new GitRef($branchName), new GitRef($branchName));
         } else {
-            $this->remote->checkout($remote, $branchName);
+            $this->remote->checkout(new RemoteName($remote), new GitRef($branchName));
         }
     }
 
+    /** @deprecated */
     public function trackRemoteBranch(string $remote, string $branchName): void
     {
-        $this->process->mustRun(['git', 'branch', '--set-upstream-to', $remote . '/' . $branchName, $branchName]);
+        $this->remote->trackBranch(new RemoteName($remote), new GitRef($branchName));
     }
 
     public function guardWorkingTreeReady(): void
@@ -309,42 +243,25 @@ class Git
         }
     }
 
+    /** @deprecated */
     public function ensureNotesFetching(string $remote): void
     {
-        $fetches = StringUtil::splitLines(
-            $this->getGitConfig('remote.' . $remote . '.fetch', 'local', true)
-        );
-
-        if (! \in_array('+refs/notes/*:refs/notes/*', $fetches, true)) {
-            $this->style->note(
-                \sprintf('Set fetching of notes for remote "%s".', $remote)
-            );
-
-            $this->process->mustRun(
-                ['git', 'config', '--add', '--local', 'remote.' . $remote . '.fetch', '+refs/notes/*:refs/notes/*']
-            );
-        }
+        $this->remote->ensureNotesFetching(new RemoteName($remote));
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function ensureBranchInSync(string $remote, string $localBranch, bool $allowPush = true): void
     {
-        $this->remote->ensureBranchInSync($remote, $localBranch, $allowPush);
+        $this->remote->ensureBranchInSync(new RemoteName($remote), new GitMultiRef($localBranch, $localBranch), $allowPush);
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function ensureRemoteExists(string $name, string $url): void
     {
         $this->config->ensureRemoteExists($name, $url);
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function getGitConfig(string $config, string $section = 'local', bool $all = false): string
     {
         if ($section === 'local') {
@@ -354,69 +271,28 @@ class Git
         return $all ? $this->config->getAllGlobal($config) : $this->config->getGlobal($config);
     }
 
-    /** @return array{'host': string, 'org': string, 'repo': string} */
-    public function getRemoteInfo(string $name = REMOTE_MAIN): array
+    /** @deprecated */
+    public function getRemoteInfo(string $name = REMOTE_MAIN): RemoteInfo
     {
-        return self::getGitUrlInfo($this->getGitConfig('remote.' . $name . '.url'));
+        return $this->remote->getRemoteInfo(new RemoteName($name));
     }
 
-    /** @return array{'host': string, 'org': string, 'repo': string} */
-    public static function getGitUrlInfo(string $gitUri): array
+    /** @deprecated */
+    public static function getGitUrlInfo(string $gitUri, ?string $name = null): RemoteInfo
     {
-        $info = [
-            'host' => '',
-            'org' => '',
-            'repo' => '',
-            'path' => '',
-        ];
-
-        if (mb_stripos($gitUri, 'file://') === 0) {
-            unset($info['path']);
-
-            return $info;
-        }
-
-        if (mb_stripos($gitUri, 'http://') === 0 || mb_stripos($gitUri, 'https://') === 0) {
-            $url = parse_url($gitUri);
-
-            if ($url === false) {
-                throw new \InvalidArgumentException(\sprintf('Malformed Git url "%s".', $gitUri));
-            }
-
-            $info['host'] = $url['host'];
-            $info['path'] = ltrim($url['path'] ?? '', '/');
-        } elseif (preg_match('%^(?:(?:git|ssh)://)?[^@]+@(?P<host>[^:]+):(?P<path>[^$]+)$%', $gitUri, $match)) {
-            $info['host'] = $match['host'];
-            $info['path'] = $match['path'];
-        } elseif (preg_match('%^(?:(?:git|ssh)://)?([^@]+@)?(?P<host>[^/]+)/(?P<path>[^$]+)$%', $gitUri, $match)) {
-            $info['host'] = $match['host'];
-            $info['path'] = $match['path'];
-        }
-
-        if (str_contains($info['path'], '/')) {
-            $dirs = \array_slice(explode('/', $info['path']), -2, 2);
-
-            $info['org'] = $dirs[0];
-            $info['repo'] = mb_substr($dirs[1], -4, 4) === '.git' ? mb_substr($dirs[1], 0, -4) : $dirs[1];
-        }
-
-        unset($info['path']);
-
-        return $info;
+        return RemoteInfo::fromString($gitUri, $name ? new RemoteName($name) : null);
     }
 
-    /**
-     * @deprecated
-     */
+    /** @deprecated */
     public function clone(string $url, string $remoteName = 'origin', ?int $depth = null): void
     {
-        $this->remote->clone($url, '.', $remoteName, $depth);
+        $this->remote->clone($url, '.', new RemoteName($remoteName), $depth);
     }
 
     public function getGitDirectory(): string
     {
         if ($this->gitDir === null) {
-            $gitDir = trim($this->process->run(['git', 'rev-parse', '--git-dir'])->getOutput());
+            $gitDir = mb_trim($this->process->run(['git', 'rev-parse', '--git-dir'])->getOutput());
 
             if ($gitDir === '.git') {
                 $gitDir = $this->filesystem->getCwd() . '/.git';

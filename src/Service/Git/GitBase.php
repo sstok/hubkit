@@ -25,7 +25,7 @@ abstract class GitBase
         protected CliProcess $process,
         protected StyleInterface $style,
         protected Filesystem $filesystem,
-    ) { }
+    ) {}
 
     protected function guardWorkingTreeReady(): void
     {

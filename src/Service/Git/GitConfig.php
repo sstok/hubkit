@@ -13,9 +13,6 @@ declare(strict_types=1);
 
 namespace HubKit\Service\Git;
 
-use HubKit\Service\CliProcess;
-use Symfony\Component\Console\Style\StyleInterface;
-
 class GitConfig extends GitBase
 {
     public function setLocal(string $key, int | string $value, bool $overwrite = false): void
@@ -80,6 +77,6 @@ class GitConfig extends GitBase
     {
         $process = $this->process->run(['git', 'config', '--' . $section, '--' . ($all ? 'get-all' : 'get'), $config]);
 
-        return trim($process->getOutput());
+        return mb_trim($process->getOutput());
     }
 }
