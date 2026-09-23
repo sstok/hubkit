@@ -35,7 +35,8 @@ class Git
     final public const STATUS_NEED_PUSH = 'need_push';
     final public const STATUS_DIVERGED = 'diverged';
 
-    private ?string $gitDir = null;
+    private ?string $rootDir = null;
+    private ?string $cwdCache = null;
 
     private GitBranch $branch;
     private GitRemote $remote;
@@ -55,7 +56,8 @@ class Git
 
     public function isGitDir(): bool
     {
-        $process = $this->process->run(new Process(['git', 'rev-parse', '--show-toplevel'], $this->filesystem->getCwd()));
+        $cwd = $this->filesystem->getCwd();
+        $process = $this->process->run(new Process(['git', 'rev-parse', '--show-toplevel'], $cwd));
 
         if (! $process->isSuccessful()) {
             return false;
@@ -67,7 +69,7 @@ class Git
             return false;
         }
 
-        return str_replace('\\', '/', $this->filesystem->getCwd()) === $directory;
+        return str_replace('\\', '/', $cwd) === $directory;
     }
 
     public function branch(): GitBranch
@@ -191,11 +193,13 @@ class Git
 
     public function isWorkingTreeReady()
     {
-        if (mb_trim($this->process->mustRun(new Process(['git', 'status', '--porcelain', '--untracked-files=no'], $this->filesystem->getCwd()))->getOutput()) !== '') {
+        $cwd = $this->filesystem->getCwd();
+
+        if (mb_trim($this->process->mustRun(new Process(['git', 'status', '--porcelain', '--untracked-files=no'], $cwd))->getOutput()) !== '') {
             return false;
         }
 
-        if (mb_trim($this->process->run(Process::fromShellCommandline('ls `git rev-parse --git-dir` | grep rebase', $this->filesystem->getCwd()))->getOutput()) !== '') {
+        if (mb_trim($this->process->run(Process::fromShellCommandline('ls `git rev-parse --git-dir` | grep rebase', $cwd))->getOutput()) !== '') {
             return false;
         }
 
@@ -291,16 +295,24 @@ class Git
 
     public function getGitDirectory(): string
     {
-        if ($this->gitDir !== null) {
-            return $this->gitDir;
+        return $this->getRootDirectory() . '/.git';
+    }
+
+    public function getRootDirectory(): string
+    {
+        $cwd = $this->filesystem->getCwd();
+
+        if ($this->rootDir !== null && $this->cwdCache === $cwd) {
+            return $this->rootDir;
         }
 
-        $gitDir = mb_trim($this->process->run(new Process(['git', 'rev-parse', '--git-dir'], $this->filesystem->getCwd()))->getOutput());
+        $rootDir = mb_trim($this->process->run(new Process(['git', 'rev-parse', '--git-dir'], $cwd))->getOutput());
+        $this->cwdCache = $cwd;
 
-        if ($gitDir === '.git') {
-            $gitDir = $this->filesystem->getCwd() . '/.git';
+        if ($rootDir === '.git') {
+            $rootDir = $cwd;
         }
 
-        return $this->gitDir = $gitDir;
+        return $this->rootDir = $rootDir;
     }
 }

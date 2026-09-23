@@ -19,6 +19,7 @@ final readonly class Commit
         public string $sha,
         public string $author,
         public string $authorEmail,
+        public \DateTimeImmutable $date,
         public string $subject,
         public string $message,
         public bool $merge = false,
@@ -28,7 +29,10 @@ final readonly class Commit
     {
         return [
             'sha' => $this->sha,
+            'authName' => $this->author,
+            'authorEmail' => $this->authorEmail,
             'author' => \sprintf('%s <%s>', $this->author, $this->authorEmail),
+            'date' => $this->date,
             'subject' => $this->subject,
             'message' => $this->message,
             'merge' => $this->merge,

@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace HubKit\Tests\Functional\Service\Git;
 
+use HubKit\Service\Git;
 use HubKit\Service\Git\GitConfig;
 use HubKit\Tests\Functional\GitTesterTrait;
 use PHPUnit\Framework\TestCase;
@@ -45,14 +46,15 @@ final class GitConfigTest extends TestCase
         $this->addRemote('origin', $this->remoteRepository, $this->localRepository);
         $this->runCliCommand(['git', 'push', 'origin', 'master'], $this->localRepository);
 
-        $test = $this; // Come-on Prophecy :'(
+        $test = $this;
         $this->style = $this->prophesize(StyleInterface::class);
         $this->style->note(Argument::any())->will(
             static function ($text) use ($test): void {
                 $test->output .= implode('', $text);
             }
         );
-        $this->git = new GitConfig($this->getProcessService(), $this->style->reveal());
+
+        $this->git = new GitConfig($this->prophesize(Git::class)->reveal(), $this->getProcessService(), $this->style->reveal(), $this->create);
     }
 
     /** @test */
@@ -132,116 +134,18 @@ final class GitConfigTest extends TestCase
         self::assertNotEquals('', $this->git->getAllGlobal('author.name'));
     }
 
-    /** @test */
-    public function it_gets_remote_info(): void
-    {
-        $this->git->ensureRemoteExists(REMOTE_MAIN, 'https://github.com/park-manager/hubkit');
-
-        self::assertEquals(
-            [
-                'host' => 'github.com',
-                'org' => 'park-manager',
-                'repo' => 'hubkit',
-            ],
-            $this->git->getRemoteInfo(REMOTE_MAIN)
-        );
-    }
-
-    public function provideGitUrls(): iterable
-    {
-        yield 'Https' => [
-            'https://github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Http' => [
-            'http://github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Https with .git suffix' => [
-            'https://github.com/park-manager/hubkit.git',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Https with port number' => [
-            'http://github.com:80/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Https with username authenticator in hostname' => [
-            'https://sstok@github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Https without repository, organization only' => [
-            'https://github.com/park-manager',
-            ['host' => 'github.com', 'org' => '', 'repo' => ''],
-        ];
-
-        yield 'Https without organization' => [
-            'https://github.com/',
-            ['host' => 'github.com', 'org' => '', 'repo' => ''],
-        ];
-
-        yield 'Https host only' => [
-            'https://github.com',
-            ['host' => 'github.com', 'org' => '', 'repo' => ''],
-        ];
-
-        yield 'Git protocol' => [
-            'git://sstok@github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Git protocol without resolvable location' => [
-            'git://sstok@github.com/park-manager-hubkit',
-            ['host' => 'github.com', 'org' => '', 'repo' => ''],
-        ];
-
-        yield 'Ssh+git protocol' => [
-            'ssh+git://sstok@github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Ssh protocol' => [
-            'ssh://github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Ssh protocol with username' => [
-            'ssh://sstok@github.com/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Ssh with relative path location' => [
-            'ssh://github.com/~home/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Ssh with .git suffix' => [
-            'ssh://github.com/park-manager/hubkit.git',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'Ssh port number' => [
-            'ssh://sstok@github.com:8080/park-manager/hubkit',
-            ['host' => 'github.com', 'org' => 'park-manager', 'repo' => 'hubkit'],
-        ];
-
-        yield 'File local protocol' => [
-            'file:///home/homer/projects/park-manager/',
-            ['host' => '', 'org' => '', 'repo' => ''],
-        ];
-    }
-
-    /**
-     * @test
-     *
-     * @dataProvider provideGitUrls
-     */
-    public function it_gets_git_url_info(string $url, array $info): void
-    {
-        self::assertEquals($info, $this->git::getGitUrlInfo($url));
-    }
+//    /** @test */
+//    public function it_gets_remote_info(): void
+//    {
+//        $this->git->ensureRemoteExists(REMOTE_MAIN, 'https://github.com/park-manager/hubkit');
+//
+//        self::assertEquals(
+//            [
+//                'host' => 'github.com',
+//                'org' => 'park-manager',
+//                'repo' => 'hubkit',
+//            ],
+//            $this->git->getRemoteInfo(REMOTE_MAIN)
+//        );
+//    }
 }

@@ -13,11 +13,13 @@ declare(strict_types=1);
 
 namespace HubKit\Service\Git;
 
+use Symfony\Component\Process\Process;
+
 class GitConfig extends GitBase
 {
     public function setLocal(string $key, int | string $value, bool $overwrite = false): void
     {
-        $this->setConfig($key, $value, $overwrite, 'local');
+        $this->setConfig($key, $value, 'local', $overwrite);
     }
 
     public function getLocal(string $key): string
@@ -27,7 +29,7 @@ class GitConfig extends GitBase
 
     public function getAllLocal(string $key): string
     {
-        return $this->getConfig($key, 'local', true);
+        return $this->getConfigAll($key, 'local');
     }
 
     public function getGlobal(string $key): string
@@ -37,25 +39,25 @@ class GitConfig extends GitBase
 
     public function getAllGlobal(string $key): string
     {
-        return $this->getConfig($key, 'global', true);
+        return $this->getConfigAll($key, 'global');
     }
 
     public function ensureRemoteExists(string $name, string $url): void
     {
-        if ($url === $this->getConfig('remote.' . $name . '.url')) {
+        if ($url === $this->getConfig('remote.' . $name . '.url', 'local')) {
             return;
         }
 
         $this->style->note(\sprintf('Adding remote "%s" with "%s".', $name, $url));
 
-        if (! $this->getConfig('remote.' . $name . '.url')) {
+        if (! $this->getConfig('remote.' . $name . '.url', 'local')) {
             $this->process->mustRun(['git', 'remote', 'add', $name, $url]);
         } else {
-            $this->setConfig('remote.' . $name . '.url', $url, true);
+            $this->setConfig('remote.' . $name . '.url', $url, 'local', true);
         }
     }
 
-    private function setConfig(string $config, int | string $value, bool $overwrite = false, string $section = 'local'): void
+    private function setConfig(string $config, int | string $value, string $section, bool $overwrite = false): void
     {
         if (! $overwrite && $this->getConfig($config, $section) !== '') {
             throw new \RuntimeException(
@@ -67,15 +69,24 @@ class GitConfig extends GitBase
             );
         }
 
+        $cwd = $this->filesystem->getCwd();
+
         // Git adds a new value (superseding the old one) but we want replace the entire value.
         // And `--replace-all` requires a regexp (WAT?) to properly replace the value...
-        $this->process->run(['git', 'config', '--' . $section, '--unset', $config]);
-        $this->process->mustRun(['git', 'config', '--' . $section, $config, $value]);
+        $this->process->run(new Process(['git', 'config', '--' . $section, '--unset', $config], $cwd));
+        $this->process->mustRun(new Process(['git', 'config', '--' . $section, $config, $value], $cwd));
     }
 
-    public function getConfig(string $config, string $section = 'local', bool $all = false): string
+    private function getConfig(string $config, string $section): string
     {
-        $process = $this->process->run(['git', 'config', '--' . $section, '--' . ($all ? 'get-all' : 'get'), $config]);
+        $process = $this->process->run(new Process(['git', 'config', '--' . $section, '--get', $config], $this->filesystem->getCwd()));
+
+        return mb_trim($process->getOutput());
+    }
+
+    private function getConfigAll(string $config, string $section): string
+    {
+        $process = $this->process->run(new Process(['git', 'config', '--' . $section, '--get-all', $config], $this->filesystem->getCwd()));
 
         return mb_trim($process->getOutput());
     }

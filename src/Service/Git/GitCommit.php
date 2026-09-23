@@ -60,14 +60,14 @@ class GitCommit extends GitBase
 
     public function get(string $commitHash): Commit
     {
-        // 0=parent(s), 1=author, 2=author-email, 3=subject, anything higher then 3 is the full message
+        // 0=parent(s), 1=date, 2=author, 3=author-email, 4=subject, anything higher then 4 is the full message
         $commitData = StringUtil::splitLines(
             $this->process->run(
                 [
                     'git',
                     '--no-pager',
                     'show',
-                    '--format=%P%n%an%n%ae%n%s%n%b',
+                    '--format=%P%n%aI%n%an%n%ae%n%s%n%b', // %n = newline
                     '--no-color',
                     '--no-patch',
                     $commitHash,
@@ -76,12 +76,13 @@ class GitCommit extends GitBase
         );
 
         $parents = (string) array_shift($commitData); // [merged into] [merged from?]
+        $date = (string) array_shift($commitData);
         $author = (string) array_shift($commitData);
         $authorEmail = (string) array_shift($commitData);
         $subject = (string) array_shift($commitData);
         $isMergeCommit = str_contains($parents, ' ');
 
-        return new Commit($commitHash, $author, $authorEmail, $subject, implode("\n", $commitData), $isMergeCommit);
+        return new Commit($commitHash, $author, $authorEmail, new \DateTimeImmutable($date), $subject, implode("\n", $commitData), $isMergeCommit);
     }
 
     public function add(string $path, bool $force = false): void
