@@ -13,6 +13,19 @@ declare(strict_types=1);
 
 namespace HubKit\Model\Git;
 
+/**
+ * Represents a pair of Git references, consisting of a source reference and a target reference.
+ *
+ * This class ensures that the provided references adhere to specific constraints:
+ * - The source reference must not be a remote reference.
+ * - The target reference must not be the HEAD reference.
+ *
+ * Instances of this class can be created by passing `GitRef` objects directly or by using string values
+ * that will be converted to `GitRef` objects internally.
+ *
+ * Additionally, objects of this class can be created from a string representation of the format
+ * "source:target" using the `fromString` method.
+ */
 final readonly class GitMultiRef
 {
     public GitRef $source;
@@ -33,8 +46,12 @@ final readonly class GitMultiRef
         $this->target = $target;
         $this->source = $source;
 
-        if (str_starts_with($target->ref, 'refs/remotes')) {
-            throw new \InvalidArgumentException(\sprintf('Invalid ref name "%s" for target, cannot use ref/remotes for remote target.', $target->ref));
+        if ($source->isRemote()) {
+            throw new \InvalidArgumentException(\sprintf('Invalid ref "%s" for source. Cannot use "refs/remotes" for source.', $source->ref));
+        }
+
+        if ($target->isHead()) {
+            throw new \InvalidArgumentException('Invalid ref for target. Cannot use HEAD for remote target, use a branch name instead.');
         }
     }
 
@@ -42,6 +59,10 @@ final readonly class GitMultiRef
     {
         if (! str_contains($ref, ':')) {
             throw new \InvalidArgumentException(\sprintf('Ref "%s" does not contain a target ref, either "source:target".', $ref));
+        }
+
+        if (substr_count($ref, ':') > 1) {
+            throw new \InvalidArgumentException(\sprintf('Ref "%s" contains more than one ":".', $ref));
         }
 
         return new self(...explode(':', $ref, 2));

@@ -43,11 +43,14 @@ class GitRemote extends GitBase
 
     public function checkout(RemoteName $remote, GitRef $ref): void
     {
+        $ref->expectRelative();
+
         $this->process->mustRun(['git', 'checkout', 'remotes/' . $remote . '/' . $ref]);
     }
 
     public function checkoutNew(RemoteName $remote, GitRef $source, GitRef $name): void
     {
+        $source->expectRelative();
         $name->expectBranch();
 
         $this->process->mustRun(['git', 'checkout', 'remotes/' . $remote . '/' . $source, '-b', $name]);
@@ -102,6 +105,8 @@ class GitRemote extends GitBase
     public function fetch(RemoteName $remote, ?GitRef $ref = null): void
     {
         if ($ref) {
+            $ref->expectRelative();
+
             $this->process->mustRun(['git', 'fetch', $remote, $ref]);
 
             return;
@@ -121,6 +126,8 @@ class GitRemote extends GitBase
         }
 
         if ($ref) {
+            $ref->expectRelative();
+
             $cmd[] = $ref;
         }
 
